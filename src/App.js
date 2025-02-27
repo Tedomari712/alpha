@@ -41,10 +41,12 @@ const FinancialDashboard = () => {
   };
 
   // Format percentage helper
-  const formatPercent = (num) => {
-    if (num === null || num === undefined || !isFinite(num)) return 'N/A';
-    return num.toFixed(1) + '%';
-  };
+  const formatMultiplier = (num) => {
+  if (num === null || num === undefined || !isFinite(num)) return 'N/A';
+  // Convert percentage to multiplier, e.g., 20 becomes 1.2x
+  return (1 + num / 100).toFixed(1) + 'x';
+};
+
   
   // Helper for log scale data transformation
   const transformForLogScale = (dataArray, keys) => {
@@ -398,7 +400,7 @@ const FinancialDashboard = () => {
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-gray-500 text-sm font-medium mb-1">MTD User Growth</h3>
                 <div className="text-3xl font-bold text-gray-900">
-                  {data.mtdGrowth[1] ? formatPercent(data.mtdGrowth[1].transactionCountGrowth) : 'N/A'}
+                  {data.mtdGrowth[1] ? formatMultiplier(data.mtdGrowth[1].transactionCountGrowth) : 'N/A'}
                 </div>
                 <div className="mt-4">
                   <div className="text-sm text-gray-500">Current Active Users</div>
@@ -412,7 +414,7 @@ const FinancialDashboard = () => {
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-gray-500 text-sm font-medium mb-1">MTD Revenue Growth</h3>
                 <div className="text-3xl font-bold text-gray-900">
-                  {data.mtdGrowth[1] ? formatPercent(data.mtdGrowth[1].revenueGrowth) : 'N/A'}
+                  {data.mtdGrowth[1] ? formatMultiplier(data.mtdGrowth[1].revenueGrowth) : 'N/A'}
                 </div>
                 <div className="mt-4">
                   <div className="text-sm text-gray-500">Current Revenue</div>
@@ -423,7 +425,7 @@ const FinancialDashboard = () => {
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-gray-500 text-sm font-medium mb-1">MTD Transaction Volume Growth</h3>
                 <div className="text-3xl font-bold text-gray-900">
-                  {data.mtdGrowth[1] ? formatPercent(data.mtdGrowth[1].transactionVolumeGrowth) : 'N/A'}
+                  {data.mtdGrowth[1] ? formatMultiplier(data.mtdGrowth[1].transactionVolumeGrowth) : 'N/A'}
                 </div>
                 <div className="mt-4">
                   <div className="text-sm text-gray-500">Current Transaction Volume</div>
@@ -473,7 +475,7 @@ const FinancialDashboard = () => {
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="currency" />
                         <YAxis scale="log" domain={['auto', 'auto']} allowDataOverflow={true} />
-                        <Tooltip formatter={(value) => formatPercent(value)} />
+                        <Tooltip formatter={(value) => formatMultiplier(value)} />
                         <Legend />
                         <Bar dataKey="transactionVolumeGrowth" name="Volume Growth" fill={COLORS.volume}>
                           {data.mtdGrowth.map((entry, index) => (
@@ -496,7 +498,7 @@ const FinancialDashboard = () => {
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="currency" />
                         <YAxis scale="log" domain={['auto', 'auto']} allowDataOverflow={true} />
-                        <Tooltip formatter={(value) => formatPercent(value)} />
+                        <Tooltip formatter={(value) => formatMultiplier(value)} />
                         <Legend />
                         <Bar dataKey="revenueGrowth" name="Revenue Growth" fill={COLORS.revenue}>
                           {data.mtdGrowth.filter(item => item.revenueGrowth !== null && isFinite(item.revenueGrowth)).map((entry, index) => (
@@ -526,7 +528,7 @@ const FinancialDashboard = () => {
                 <h3 className="text-gray-500 text-sm font-medium mb-1">Active Users</h3>
                 <div className="text-3xl font-bold text-gray-900">{formatNumber(data.keyMetrics.activeUsers)}</div>
                 <div className="text-sm text-gray-500 mt-1">
-                  ({formatPercent((data.keyMetrics.activeUsers / data.keyMetrics.totalUsers) * 100)} of total)
+                  ({formatMultiplier((data.keyMetrics.activeUsers / data.keyMetrics.totalUsers) * 100)} of total)
                 </div>
                 <div className="text-xs text-gray-500 mt-1 italic">
                   Users with transactions in the last 30 days
@@ -536,7 +538,7 @@ const FinancialDashboard = () => {
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-gray-500 text-sm font-medium mb-1">MTD User Growth</h3>
                 <div className="text-3xl font-bold text-gray-900" style={{ color: getGrowthColor(data.mtdGrowth[1]?.transactionCountGrowth) }}>
-                  {data.mtdGrowth[1] ? formatPercent(data.mtdGrowth[1].transactionCountGrowth) : 'N/A'}
+                  {data.mtdGrowth[1] ? formatMultiplier(data.mtdGrowth[1].transactionCountGrowth) : 'N/A'}
                 </div>
               </div>
             </div>
@@ -603,7 +605,7 @@ const FinancialDashboard = () => {
                       <tr key={index}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{item.currency}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatNumber(item.currentTransactionCount)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatPercent(item.transactionCountGrowth)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatMultiplier(item.transactionCountGrowth)}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                             ${item.transactionCountGrowth > 10 ? 'bg-green-100 text-green-800' : 
@@ -634,7 +636,7 @@ const FinancialDashboard = () => {
                     <h4 className="text-gray-600 text-sm font-medium mb-1">{currency.currency} Revenue Growth</h4>
                     <div className="text-2xl font-bold" style={{ color: getGrowthColor(currency.revenueGrowth) }}>
                       {currency.revenueGrowth !== null && isFinite(currency.revenueGrowth) 
-                        ? formatPercent(currency.revenueGrowth) 
+                        ? formatMultiplier(currency.revenueGrowth) 
                         : 'N/A'}
                     </div>
                     <div className="text-sm text-gray-500 mt-1">
@@ -734,7 +736,7 @@ const FinancialDashboard = () => {
                           {item.currentRevenue} {item.currency}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
-                          {item.revenueGrowth !== null && isFinite(item.revenueGrowth) ? formatPercent(item.revenueGrowth) : 'N/A'}
+                          {item.revenueGrowth !== null && isFinite(item.revenueGrowth) ? formatMultiplier(item.revenueGrowth) : 'N/A'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           {item.revenueGrowth !== null && isFinite(item.revenueGrowth) && (
@@ -783,7 +785,7 @@ const FinancialDashboard = () => {
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-gray-500 text-sm font-medium mb-1">Transaction Count Growth</h3>
                 <div className="text-3xl font-bold text-gray-900" style={{ color: getGrowthColor(data.mtdGrowth[1]?.transactionCountGrowth) }}>
-                  {data.mtdGrowth[1] ? formatPercent(data.mtdGrowth[1].transactionCountGrowth) : 'N/A'}
+                  {data.mtdGrowth[1] ? formatMultiplier(data.mtdGrowth[1].transactionCountGrowth) : 'N/A'}
                 </div>
               </div>
             </div>
@@ -850,7 +852,7 @@ const FinancialDashboard = () => {
                       <tr key={index}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{item.currency}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatNumber(item.currentTransactionVolume)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatPercent(item.transactionVolumeGrowth)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatMultiplier(item.transactionVolumeGrowth)}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                             ${item.transactionVolumeGrowth > 10 ? 'bg-green-100 text-green-800' : 
