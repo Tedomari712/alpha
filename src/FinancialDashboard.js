@@ -164,41 +164,33 @@ const FinancialDashboard = () => {
         const monthlyTransactionCount = extractSheetData('Monthly_Transaction_Count');
         const monthlyRevenue = extractSheetData('Monthly_Revenue');
         const monthlyVolume = extractSheetData('Monthly_Transaction_Volume');
+        const monthlyActiveUsers = extractSheetData('Monthly_Active_Users'); // New sheet for user growth
         const userStats = extractSheetData('User_Statistics'); // If you still want total user count
 
-        // 1) Compute active users based on calendar months (February vs January)
-        // For February 2025
-        const febStart = new Date(2025, 1, 1); // 2025-02-01
-        const febEnd = new Date(2025, 1, 28, 23, 59, 59);
+        // Get user growth data from Monthly_Active_Users sheet
+        const janActiveRow = monthlyActiveUsers.find(m => m.YearMonth === '2025-01') || {};
+        const febActiveRow = monthlyActiveUsers.find(m => m.YearMonth === '2025-02') || {};
         
-        // For January 2025
-        const janStart = new Date(2025, 0, 1);
-        const janEnd = new Date(2025, 0, 31, 23, 59, 59);
-
-        const currentActiveByCurrency = getActiveUsersByCurrencyInRange(walletBalances, febStart, febEnd);
-        const previousActiveByCurrency = getActiveUsersByCurrencyInRange(walletBalances, janStart, janEnd);
-
-        // Summed total active users across all currencies in current period
-        let sumCurrentActive = 0;
-        let sumPreviousActive = 0;
-        Object.keys(currentActiveByCurrency).forEach(cur => {
-          sumCurrentActive += currentActiveByCurrency[cur];
-        });
-        Object.keys(previousActiveByCurrency).forEach(cur => {
-          sumPreviousActive += previousActiveByCurrency[cur];
-        });
-
-        // Calculate distinct active users for February (current month)
-        const distinctActiveUsers = walletBalances.filter(user => {
-          const lastTxDate = new Date(user['Last Transaction'] || '');
-          return lastTxDate >= febStart && lastTxDate <= febEnd;
-        }).length;
+        // Process active users by currency
+        const currentActiveByCurrency = {
+          KES: parseInt(febActiveRow.KES?.replace(/,/g, '') || 0, 10),
+          UGX: parseInt(febActiveRow.UGX?.replace(/,/g, '') || 0, 10),
+          NGN: parseInt(febActiveRow.NGN?.replace(/,/g, '') || 0, 10),
+          USD: parseInt(febActiveRow.USD?.replace(/,/g, '') || 0, 10),
+          CNY: parseInt(febActiveRow.CNY?.replace(/,/g, '') || 0, 10)
+        };
         
-        // Calculate distinct active users for January (previous month)
-        const distinctActiveUsersPrev = walletBalances.filter(user => {
-          const lastTxDate = new Date(user['Last Transaction'] || '');
-          return lastTxDate >= janStart && lastTxDate <= janEnd;
-        }).length;
+        const previousActiveByCurrency = {
+          KES: parseInt(janActiveRow.KES?.replace(/,/g, '') || 0, 10),
+          UGX: parseInt(janActiveRow.UGX?.replace(/,/g, '') || 0, 10),
+          NGN: parseInt(janActiveRow.NGN?.replace(/,/g, '') || 0, 10),
+          USD: parseInt(janActiveRow.USD?.replace(/,/g, '') || 0, 10),
+          CNY: parseInt(janActiveRow.CNY?.replace(/,/g, '') || 0, 10)
+        };
+        
+        // Distinct active users for February and January from the Monthly_Active_Users sheet
+        const distinctActiveUsers = parseInt(febActiveRow.Total?.replace(/,/g, '') || 0, 10);
+        const distinctActiveUsersPrev = parseInt(janActiveRow.Total?.replace(/,/g, '') || 0, 10);
 
         // 2) Key metrics: total revenue, total transactions, total users
         //    For "total users," you can either use userStats or walletBalances.length
@@ -211,9 +203,27 @@ const FinancialDashboard = () => {
           totalUsers = walletBalances.length;
         }
 
-        // total transactions => Use the 'Total' column from the CSV directly
+        // Make sure transaction counts are correctly parsed with commas
+        // Get the exact totals from Monthly_Transaction_Count sheet
+        const validateTxCount = (row) => {
+          if (!row) return 0;
+          // If Total column exists, use it directly
+          if (row.Total) {
+            return parseInt(row.Total.toString().replace(/,/g, ''), 10);
+          }
+          // Otherwise sum all currency columns
+          let total = 0;
+          ['KES', 'UGX', 'NGN', 'USD', 'CNY'].forEach(currency => {
+            if (row[currency]) {
+              total += parseInt(row[currency].toString().replace(/,/g, ''), 10);
+            }
+          });
+          return total;
+        };
+
+        // Total transactions - use the exact total from the sheet
         const febCountRow = monthlyTransactionCount.find(m => m.YearMonth === '2025-02');
-        const totalTransactions = febCountRow ? parseFloat(febCountRow.Total || 0) : 0;
+        const totalTransactions = validateTxCount(febCountRow);
 
         // total revenue => from the most recent month in Monthly_Revenue (2025-02), converting all to KES
         const febRevenueRow = monthlyRevenue.find(m => m.YearMonth === '2025-02');
@@ -235,8 +245,8 @@ const FinancialDashboard = () => {
             const revRow = monthlyRevenue.find(r => r.YearMonth === ym) || {};
             const volRow = monthlyVolume.find(v => v.YearMonth === ym) || {};
 
-            // Use the Total column directly from the CSV
-            const txCount = parseFloat(item.Total || 0);
+            // Parse the transaction count properly
+            const txCount = validateTxCount(item);
 
             // Sum revenue (KES + conversions)
             let revKES = 0;
@@ -643,7 +653,7 @@ const FinancialDashboard = () => {
                   ({formatMultiplier((data.keyMetrics.activeUsers / data.keyMetrics.totalUsers) * 100)} of total)
                 </div>
                 <div className="text-xs text-gray-500 mt-1 italic">
-                  Users with transactions in February 2025
+                  Users with transactions in February 2025 (from Monthly_Active_Users sheet)
                 </div>
               </div>
               
@@ -894,9 +904,7 @@ const FinancialDashboard = () => {
                 <div className="text-3xl font-bold text-gray-900">
                   {formatNumber(data.keyMetrics.totalTransactions)}
                 </div>
-                <div className="text-xs text-gray-500 mt-1 italic">
-                  Using Total column from CSV directly
-                </div>
+
               </div>
               
               <div className="bg-white rounded-lg shadow p-6">
