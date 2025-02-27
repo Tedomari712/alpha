@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { LineChart, BarChart, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, Cell } from 'recharts';
+import {
+  LineChart, BarChart, ComposedChart, Bar, Line, XAxis, YAxis,
+  CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
+} from 'recharts';
 import * as XLSX from 'xlsx';
 
 const FinancialDashboard = () => {
@@ -27,35 +30,33 @@ const FinancialDashboard = () => {
 
   // Format numbers helper function
   const formatNumber = (num, decimals = 0) => {
-    if (num === null || num === undefined) return 'N/A';
+    if (num === null || num === undefined || isNaN(num)) return 'N/A';
     
     // For very large numbers (millions+)
-    if (Math.abs(num) >= 1000000) {
-      return (num / 1000000).toFixed(2) + 'M';
+    if (Math.abs(num) >= 1_000_000) {
+      return (num / 1_000_000).toFixed(2) + 'M';
     }
     // For large numbers (thousands)
     if (Math.abs(num) >= 1000) {
       return (num / 1000).toFixed(1) + 'K';
     }
-    
-    return num.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return parseFloat(num).toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   };
 
   // Format percentage helper as multiplier
   const formatMultiplier = (num) => {
+    // e.g., 20 => 1.2x
     if (num === null || num === undefined || !isFinite(num)) return 'N/A';
-    // Convert percentage to multiplier, e.g., 20 becomes 1.2x
     return (1 + num / 100).toFixed(1) + 'x';
   };
   
   // Helper for log scale data transformation
   const transformForLogScale = (dataArray, keys) => {
     return dataArray.map(item => {
-      const newItem = {...item};
+      const newItem = { ...item };
       keys.forEach(key => {
-        // Replace zeros and negative values with a small positive number
         if (newItem[key] <= 0) {
-          newItem[key] = 0.1; // Small value that works with log scale
+          newItem[key] = 0.1; // ensure positive for log scale
         }
       });
       return newItem;
@@ -79,392 +80,305 @@ const FinancialDashboard = () => {
     return COLORS.neutral;
   };
 
+  // Helper: calculate growth %
+  const calcGrowth = (current, previous) => {
+    if (previous > 0) {
+      return ((current - previous) / previous) * 100;
+    } else if (current > 0) {
+      return 100; // if previous was 0 but current is not
+    }
+    return 0;
+  };
+
+  // Compute active users by currency for a given date range
+  const getActiveUsersByCurrencyInRange = (walletBalances, startDate, endDate) => {
+    const activeByCurrency = { KES: 0, UGX: 0, NGN: 0, USD: 0, CNY: 0 };
+    walletBalances.forEach(user => {
+      const lastTx = user['Last Transaction'];
+      if (!lastTx) return;
+      const lastTxDate = new Date(lastTx);
+
+      // Check if user is active in this date range
+      if (lastTxDate >= startDate && lastTxDate <= endDate) {
+        // For each currency, if they hold a non-zero balance, increment
+        if (user.KES && parseFloat(user.KES) > 0) {
+          activeByCurrency.KES++;
+        }
+        if (user.UGX && parseFloat(user.UGX) > 0) {
+          activeByCurrency.UGX++;
+        }
+        if (user.NGN && parseFloat(user.NGN) > 0) {
+          activeByCurrency.NGN++;
+        }
+        if (user.USD && parseFloat(user.USD) > 0) {
+          activeByCurrency.USD++;
+        }
+        if (user.CNY && parseFloat(user.CNY) > 0) {
+          activeByCurrency.CNY++;
+        }
+      }
+    });
+    return activeByCurrency;
+  };
+
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
         setError(null);
-        
-        // Define currencies used throughout the app
-        const currencies = ['KES', 'UGX', 'NGN', 'USD', 'CNY'];
-        
-        // Read Excel file using fetch for browser environment
-        const response = await fetch('/financial_analysis_20250227_115233.xlsx')
-          .then(res => {
-            if (!res.ok) {
-              throw new Error(`Failed to fetch Excel file (${res.status})`);
-            }
-            return res.arrayBuffer();
-          })
-          .catch(err => {
-            console.error("Error loading Excel file:", err);
-            throw err;
-          });
 
-        const workbook = XLSX.read(response, { type: 'array' });
+        // Exchange rates (to KES)
+        const exchangeRates = {
+          UGX: 1 / 28.4659,  // 1 UGX => ~0.035 KES
+          NGN: 1 / 11.59,    // 1 NGN => ~0.086 KES
+          USD: 129.3827,     // 1 USD => 129.3827 KES
+          CNY: 17.80         // 1 CNY => 17.8 KES
+        };
 
-        // Extract sheet data helper function
+        // Fetch Excel file
+        const response = await fetch('/financial_analysis_20250227_115233.xlsx');
+        if (!response.ok) {
+          throw new Error(`Failed to fetch Excel file (${response.status})`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+
+        // Helper to parse a sheet
         const extractSheetData = (sheetName) => {
           const sheet = workbook.Sheets[sheetName];
-          return XLSX.utils.sheet_to_json(sheet, {raw: false});
+          return XLSX.utils.sheet_to_json(sheet, { raw: false });
         };
 
-        // Get data from key sheets - ONLY USING MONTHLY SHEETS AND BASE DATA
-        const userStats = extractSheetData('User_Statistics');
+        // Load ONLY the monthly sheets + wallet balances + optional userStats for total users
         const walletBalances = extractSheetData('Wallet_Balances');
-        const currencySummary = extractSheetData('Currency_Summary');
-        
-        // MONTHLY SHEETS - These are our primary data sources now
         const monthlyTransactionCount = extractSheetData('Monthly_Transaction_Count');
         const monthlyRevenue = extractSheetData('Monthly_Revenue');
-        const monthlyActiveUsers = extractSheetData('Monthly_Active_Users');
         const monthlyVolume = extractSheetData('Monthly_Transaction_Volume');
+        const userStats = extractSheetData('User_Statistics'); // If you still want total user count
 
-        // Calculate active users (transactions in the last 30 days) from Wallet_Balances
-        const now = new Date();
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(now.getDate() - 30);
+        // 1) Compute current active users (last 30 days) and previous active users (30-60 days ago)
+        const endDateCurrent = new Date(); // "now"
+        const startDateCurrent = new Date();
+        startDateCurrent.setDate(startDateCurrent.getDate() - 30);
 
-        // Get all active users
-        const activeUsers = walletBalances.filter(user => {
-          if (!user['Last Transaction']) return false;
-          const lastTransactionDate = new Date(user['Last Transaction']);
-          return lastTransactionDate >= thirtyDaysAgo;
+        const endDatePrevious = new Date(startDateCurrent); // previous window ends right before current window starts
+        const startDatePrevious = new Date();
+        startDatePrevious.setDate(startDatePrevious.getDate() - 60);
+
+        const currentActiveByCurrency = getActiveUsersByCurrencyInRange(walletBalances, startDateCurrent, endDateCurrent);
+        const previousActiveByCurrency = getActiveUsersByCurrencyInRange(walletBalances, startDatePrevious, endDatePrevious);
+
+        // Summed total active users across all currencies in current period
+        // (If a user is active in multiple currencies, they might be counted multiple times. If you want distinct user count, you need a different approach.)
+        let sumCurrentActive = 0;
+        let sumPreviousActive = 0;
+        Object.keys(currentActiveByCurrency).forEach(cur => {
+          sumCurrentActive += currentActiveByCurrency[cur];
         });
-        
-        const activeUsersCount = activeUsers.length;
-        
-        // Initialize active users by currency object - count users who have transactions in each currency
-        const activeUsersByCurrency = {};
-        currencies.forEach(currency => {
-          activeUsersByCurrency[currency] = 0;
+        Object.keys(previousActiveByCurrency).forEach(cur => {
+          sumPreviousActive += previousActiveByCurrency[cur];
         });
-        
-        // For each active user, check which currencies they have had transactions in
-        // This is a more accurate way to count active users by currency than just checking balances
-        activeUsers.forEach(user => {
-          // Check transaction counts (this is a proxy for determining which currencies they've used)
-          // A better approach would be to check actual transaction history if available
-          if (user['Transaction Count'] && parseInt(user['Transaction Count']) > 0) {
-            // For simplicity, we'll count a user as active in KES if they have any transactions
-            // In a real implementation, you'd check transaction history by currency
-            activeUsersByCurrency.KES++;
-            
-            // This is a simplified approach - in reality, you would determine which currencies
-            // were actually used in transactions by this user in the last 30 days
-            if (user.KES && user.KES !== '0.00 KES' && user.KES !== '0.00') {
-              activeUsersByCurrency.KES++;
-            }
-            if (user.UGX && user.UGX !== '0.00 UGX' && user.UGX !== '0.00') {
-              activeUsersByCurrency.UGX++;
-            }
-            if (user.NGN && user.NGN !== '0.00 NGN' && user.NGN !== '0.00') {
-              activeUsersByCurrency.NGN++;
-            }
-            if (user.USD && user.USD !== '0.00 USD' && user.USD !== '0.00') {
-              activeUsersByCurrency.USD++;
-            }
-            if (user.CNY && user.CNY !== '0.00 CNY' && user.CNY !== '0.00') {
-              activeUsersByCurrency.CNY++;
-            }
-          }
-        });
-        
-        // Also get previous month active users if possible
-        // For this, we'd need data from 30-60 days ago, but since we only have last transaction date,
-        // we'll use the Monthly_Active_Users sheet for the previous month data
-        const previousActiveUsersByCurrency = {};
-        const janActiveUsers = monthlyActiveUsers.find(m => m.YearMonth === '2025-01');
-        if (janActiveUsers) {
-          currencies.forEach(currency => {
-            previousActiveUsersByCurrency[currency] = parseInt(janActiveUsers[currency] || 0);
-          });
+
+        // Distinct active user count can also be taken from the filter approach (without currency breakdown).
+        // If you want distinct *overall* active users, just do:
+        const distinctActiveUsers = walletBalances.filter(user => {
+          const lastTxDate = new Date(user['Last Transaction'] || '');
+          return lastTxDate >= startDateCurrent && lastTxDate <= endDateCurrent;
+        }).length;
+
+        // 2) Key metrics: total revenue, total transactions, total users
+        //    For "total users," you can either use userStats or walletBalances.length
+        let totalUsers = 0;
+        const userStatRow = userStats.find(item => item.Metric === 'Total Users');
+        if (userStatRow) {
+          totalUsers = parseInt(userStatRow.Value.replace(/,/g, ''), 10);
+        } else {
+          // fallback
+          totalUsers = walletBalances.length;
         }
 
-        // Use fixed exchange rates correctly
-        const exchangeRates = {
-          'UGX': 1/28.4659,  // 1 UGX to KES
-          'USD': 129.3827,   // 1 USD to KES
-          'NGN': 1/11.59,    // 1 NGN to KES
-          'CNY': 17.80       // 1 CNY to KES
-        };
+        // total transactions => from the most recent month in Monthly_Transaction_Count (2025-02)
+        const febCountRow = monthlyTransactionCount.find(m => m.YearMonth === '2025-02');
+        const totalTransactions = febCountRow ? parseInt(febCountRow.Total || 0, 10) : 0;
 
-        // Build key metrics
-        const keyMetrics = {
-          totalRevenue: 0,
-          totalTransactions: 0,
-          totalUsers: 0,
-          activeUsers: activeUsersCount
-        };
-
-        // Get total transactions directly from the most recent month in Monthly_Transaction_Count
-        const febTransactions = monthlyTransactionCount.find(m => m.YearMonth === '2025-02');
-        if (febTransactions && febTransactions.Total) {
-          keyMetrics.totalTransactions = parseInt(febTransactions.Total);
+        // total revenue => from the most recent month in Monthly_Revenue (2025-02), converting all to KES
+        const febRevenueRow = monthlyRevenue.find(m => m.YearMonth === '2025-02');
+        let totalKesRevenue = 0;
+        if (febRevenueRow) {
+          if (febRevenueRow.KES) totalKesRevenue += parseFloat(febRevenueRow.KES);
+          if (febRevenueRow.NGN) totalKesRevenue += parseFloat(febRevenueRow.NGN) * exchangeRates.NGN;
+          if (febRevenueRow.UGX) totalKesRevenue += parseFloat(febRevenueRow.UGX) * exchangeRates.UGX;
+          if (febRevenueRow.USD) totalKesRevenue += parseFloat(febRevenueRow.USD) * exchangeRates.USD;
+          if (febRevenueRow.CNY) totalKesRevenue += parseFloat(febRevenueRow.CNY) * exchangeRates.CNY;
         }
-        
-        // Get the total revenue - sum the last month (February 2025) from Monthly_Revenue
-        const febData = monthlyRevenue.find(m => m.YearMonth === '2025-02');
-        if (febData) {
-          let totalKesRevenue = 0;
-          
-          // KES is already in KES
-          if (febData.KES && febData.KES !== "") {
-            totalKesRevenue += parseFloat(febData.KES);
-          }
-          
-          // Convert other currencies to KES using the provided exchange rates
-          if (febData.NGN && febData.NGN !== "") {
-            // 1 KES = 11.59 NGN, so 1 NGN = 1/11.59 KES
-            totalKesRevenue += parseFloat(febData.NGN) / 11.59;
-          }
-          
-          if (febData.UGX && febData.UGX !== "") {
-            // 1 KES = 28.4659 UGX, so 1 UGX = 1/28.4659 KES
-            totalKesRevenue += parseFloat(febData.UGX) / 28.4659;
-          }
-          
-          if (febData.USD && febData.USD !== "") {
-            // 1 USD = 129.3827 KES
-            totalKesRevenue += parseFloat(febData.USD) * 129.3827;
-          }
-          
-          if (febData.CNY && febData.CNY !== "") {
-            // 1 CNY = 17.80 KES
-            totalKesRevenue += parseFloat(febData.CNY) * 17.80;
-          }
-          
-          keyMetrics.totalRevenue = totalKesRevenue;
-        }
-        
-        // Get total users
-        userStats.forEach(item => {
-          if (item.Metric === 'Total Users') {
-            keyMetrics.totalUsers = parseInt(item.Value.replace(/,/g, ''));
-          }
-        });
 
-        // Build monthly trends data (exclude the "Total" row)
-        const rawMonthlyTrends = monthlyTransactionCount
+        // 3) Build monthlyTrends for multi-month charts
+        //    For each row in Monthly_Transaction_Count, find matching row in revenue & volume
+        const monthlyTrendsRaw = monthlyTransactionCount
           .filter(item => item.YearMonth !== 'Total')
           .map(item => {
-            const yearMonth = item.YearMonth;
-            const revenueRow = monthlyRevenue.find(r => r.YearMonth === yearMonth);
-            const users = monthlyActiveUsers.find(u => u.YearMonth === yearMonth) || {};
-            const volume = monthlyVolume.find(v => v.YearMonth === yearMonth) || {};
-            
-            // Convert all currency revenues to KES and sum them
-            let totalKESRevenue = 0;
-            if (revenueRow) {
-              // KES is already in KES, no conversion needed
-              if (revenueRow.KES && revenueRow.KES !== '') 
-                totalKESRevenue += parseFloat(revenueRow.KES || 0);
-              
-              // Convert other currencies to KES
-              if (revenueRow.NGN && revenueRow.NGN !== '') 
-                totalKESRevenue += parseFloat(revenueRow.NGN) * exchangeRates.NGN;
-              
-              if (revenueRow.UGX && revenueRow.UGX !== '') 
-                totalKESRevenue += parseFloat(revenueRow.UGX) * exchangeRates.UGX;
-              
-              if (revenueRow.USD && revenueRow.USD !== '') 
-                totalKESRevenue += parseFloat(revenueRow.USD) * exchangeRates.USD;
-              
-              if (revenueRow.CNY && revenueRow.CNY !== '') 
-                totalKESRevenue += parseFloat(revenueRow.CNY) * exchangeRates.CNY;
-            }
-            
+            const ym = item.YearMonth;
+            const revRow = monthlyRevenue.find(r => r.YearMonth === ym) || {};
+            const volRow = monthlyVolume.find(v => v.YearMonth === ym) || {};
+
+            // Sum revenue (KES + conversions)
+            let revKES = 0;
+            if (revRow.KES) revKES += parseFloat(revRow.KES);
+            if (revRow.NGN) revKES += parseFloat(revRow.NGN) * exchangeRates.NGN;
+            if (revRow.UGX) revKES += parseFloat(revRow.UGX) * exchangeRates.UGX;
+            if (revRow.USD) revKES += parseFloat(revRow.USD) * exchangeRates.USD;
+            if (revRow.CNY) revKES += parseFloat(revRow.CNY) * exchangeRates.CNY;
+
+            const txCount = parseInt(item.Total || 0, 10);
+            const vol = parseFloat(volRow.Total || 0);
+
             return {
-              month: yearMonth,
-              transactions: parseInt(item.Total || 0),
-              revenue: totalKESRevenue,
-              users: parseInt(users.Total || 0),
-              volume: parseFloat(volume.Total || 0)
+              month: ym,
+              transactions: txCount,
+              revenue: revKES,
+              // We are *not* using monthlyActiveUsers; let's treat "users" as 0 or some placeholder
+              // If you want a chart of total distinct active users monthly, you'd need a different approach
+              users: 0,
+              volume: vol
             };
           });
 
-        // Calculate month-over-month growth rates
-        const rawGrowthRates = {
-          user: [],
-          revenue: [],
-          volume: []
-        };
+        // 4) Month-over-month growth rates (for user, revenue, volume).
+        //    Because we no longer have monthly user data, we can just set user growth = 0 for the chart,
+        //    or remove that chart. For demonstration, we'll keep it with 0 or null.
+        const growthRatesRaw = { user: [], revenue: [], volume: [] };
+        for (let i = 1; i < monthlyTrendsRaw.length; i++) {
+          const prev = monthlyTrendsRaw[i - 1];
+          const curr = monthlyTrendsRaw[i];
 
-        for (let i = 1; i < rawMonthlyTrends.length; i++) {
-          const prevMonth = rawMonthlyTrends[i - 1];
-          const currentMonth = rawMonthlyTrends[i];
-          
-          // User growth
-          const userGrowth = prevMonth.users > 0 
-            ? ((currentMonth.users - prevMonth.users) / prevMonth.users) * 100 
+          const userGrowth = (prev.users > 0)
+            ? ((curr.users - prev.users) / prev.users) * 100
             : null;
-          
-          // Revenue growth
-          const revenueGrowth = prevMonth.revenue > 0 
-            ? ((currentMonth.revenue - prevMonth.revenue) / prevMonth.revenue) * 100 
+          const revGrowth = (prev.revenue > 0)
+            ? ((curr.revenue - prev.revenue) / prev.revenue) * 100
             : null;
-          
-          // Volume growth
-          const volumeGrowth = prevMonth.volume > 0 
-            ? ((currentMonth.volume - prevMonth.volume) / prevMonth.volume) * 100 
+          const volGrowth = (prev.volume > 0)
+            ? ((curr.volume - prev.volume) / prev.volume) * 100
             : null;
-          
-          rawGrowthRates.user.push({
-            month: currentMonth.month,
+
+          growthRatesRaw.user.push({
+            month: curr.month,
             growth: userGrowth,
-            users: currentMonth.users
+            users: curr.users
           });
-          
-          rawGrowthRates.revenue.push({
-            month: currentMonth.month,
-            growth: revenueGrowth,
-            revenue: currentMonth.revenue
+          growthRatesRaw.revenue.push({
+            month: curr.month,
+            growth: revGrowth,
+            revenue: curr.revenue
           });
-          
-          rawGrowthRates.volume.push({
-            month: currentMonth.month,
-            growth: volumeGrowth,
-            volume: currentMonth.volume
+          growthRatesRaw.volume.push({
+            month: curr.month,
+            growth: volGrowth,
+            volume: curr.volume
           });
         }
 
-        // Calculate MTD Growth directly from monthly data
-        // Find Jan and Feb data for direct comparison
-        const febRevenueData = monthlyRevenue.find(m => m.YearMonth === '2025-02');
-        const janRevenueData = monthlyRevenue.find(m => m.YearMonth === '2025-01');
-        const febTransactionData = monthlyTransactionCount.find(m => m.YearMonth === '2025-02');
-        const janTransactionData = monthlyTransactionCount.find(m => m.YearMonth === '2025-01');
-        const febVolumeData = monthlyVolume.find(m => m.YearMonth === '2025-02');
-        const janVolumeData = monthlyVolume.find(m => m.YearMonth === '2025-01');
-        
-        // Calculate growth metrics for each currency
+        // 5) Calculate MTD Growth for each currency (Jan vs Feb) for transactionCount, volume, revenue
+        //    Also incorporate user growth from walletBalances for each currency
+        const currencies = ['KES','UGX','NGN','USD','CNY'];
+        const janTxRow = monthlyTransactionCount.find(m => m.YearMonth === '2025-01') || {};
+        const febTxRow = monthlyTransactionCount.find(m => m.YearMonth === '2025-02') || {};
+        const janVolRow = monthlyVolume.find(m => m.YearMonth === '2025-01') || {};
+        const febVolRow = monthlyVolume.find(m => m.YearMonth === '2025-02') || {};
+        const janRevRow = monthlyRevenue.find(m => m.YearMonth === '2025-01') || {};
+        const febRevRow = monthlyRevenue.find(m => m.YearMonth === '2025-02') || {};
+
         const mtdGrowthData = currencies.map(currency => {
-          // Get current and previous revenue
-          const currentRevenue = febRevenueData && febRevenueData[currency] ? 
-            parseFloat(febRevenueData[currency]) : 0;
-          const previousRevenue = janRevenueData && janRevenueData[currency] ? 
-            parseFloat(janRevenueData[currency]) : 0;
-          
-          // Get current and previous transaction counts
-          const currentTransCount = febTransactionData && febTransactionData[currency] ? 
-            parseFloat(febTransactionData[currency]) : 0;
-          const previousTransCount = janTransactionData && janTransactionData[currency] ? 
-            parseFloat(janTransactionData[currency]) : 0;
-          
-          // Get current and previous volume
-          const currentVolume = febVolumeData && febVolumeData[currency] ? 
-            parseFloat(febVolumeData[currency]) : 0;
-          const previousVolume = janVolumeData && janVolumeData[currency] ? 
-            parseFloat(janVolumeData[currency]) : 0;
-          
-          // Convert volumes to KES using exchange rates
-          let currentVolumeKES = currentVolume;
-          let previousVolumeKES = previousVolume;
-          
+          // transaction count
+          const currentTx = parseFloat(febTxRow[currency] || 0);
+          const prevTx = parseFloat(janTxRow[currency] || 0);
+          const txGrowth = calcGrowth(currentTx, prevTx);
+
+          // volume
+          const currentVol = parseFloat(febVolRow[currency] || 0);
+          const prevVol = parseFloat(janVolRow[currency] || 0);
+          const volGrowth = calcGrowth(currentVol, prevVol);
+
+          // convert currentVol to KES
+          let currentVolKES = currentVol;
           if (currency !== 'KES') {
-            if (currency === 'UGX') {
-              // 1 KES = 28.4659 UGX, so 1 UGX = 1/28.4659 KES
-              currentVolumeKES = currentVolume / 28.4659;
-              previousVolumeKES = previousVolume / 28.4659;
-            } else if (currency === 'NGN') {
-              // 1 KES = 11.59 NGN, so 1 NGN = 1/11.59 KES
-              currentVolumeKES = currentVolume / 11.59;
-              previousVolumeKES = previousVolume / 11.59;
-            } else if (currency === 'USD') {
-              // 1 USD = 129.3827 KES
-              currentVolumeKES = currentVolume * 129.3827;
-              previousVolumeKES = previousVolume * 129.3827;
-            } else if (currency === 'CNY') {
-              // 1 CNY = 17.80 KES
-              currentVolumeKES = currentVolume * 17.80;
-              previousVolumeKES = previousVolume * 17.80;
+            if (exchangeRates[currency]) {
+              // If currency = NGN => multiply by (1/11.59)? Actually we do `currentVol * exchangeRate`
+              // But note your code does the inverse for NGN, UGX. Double-check your earlier logic to keep consistent.
+              // For consistency, let's do: if 1 KES = 11.59 NGN, then 1 NGN = 1/11.59 KES
+              // exchangeRates.NGN = 1/11.59 => multiply currentVol by (1/11.59)
+              currentVolKES = currentVol * exchangeRates[currency];
             }
           }
-          
-          // Calculate growth rates
-          let revenueGrowth = 0;
-          if (previousRevenue > 0) {
-            revenueGrowth = ((currentRevenue - previousRevenue) / previousRevenue) * 100;
-          } else if (currentRevenue > 0) {
-            revenueGrowth = 100; // If previous was 0 but current is not, show as 100% growth
+          let prevVolKES = prevVol;
+          if (currency !== 'KES') {
+            if (exchangeRates[currency]) {
+              prevVolKES = prevVol * exchangeRates[currency];
+            }
           }
-          
-          let transactionCountGrowth = 0;
-          if (previousTransCount > 0) {
-            transactionCountGrowth = ((currentTransCount - previousTransCount) / previousTransCount) * 100;
-          } else if (currentTransCount > 0) {
-            transactionCountGrowth = 100;
-          }
-          
-          let transactionVolumeGrowth = 0;
-          if (previousVolume > 0) {
-            transactionVolumeGrowth = ((currentVolume - previousVolume) / previousVolume) * 100;
-          } else if (currentVolume > 0) {
-            transactionVolumeGrowth = 100;
-          }
-          
-          // Get active users by currency data
-          const currentActiveUsers = activeUsersByCurrency[currency] || 0;
-          const previousActiveUsers = previousActiveUsersByCurrency[currency] || 0;
-          
-          // Calculate user growth rate
-          let userGrowth = 0;
-          if (previousActiveUsers > 0) {
-            userGrowth = ((currentActiveUsers - previousActiveUsers) / previousActiveUsers) * 100;
-          } else if (currentActiveUsers > 0) {
-            userGrowth = 100;
-          }
-          
+
+          // revenue
+          const currentRev = parseFloat(febRevRow[currency] || 0);
+          const prevRev = parseFloat(janRevRow[currency] || 0);
+          const revGrowth = calcGrowth(currentRev, prevRev);
+
+          // user growth from wallet balances
+          const currActive = currentActiveByCurrency[currency] || 0;
+          const prevActive = previousActiveByCurrency[currency] || 0;
+          const userGrowth = calcGrowth(currActive, prevActive);
+
           return {
             currency,
-            revenueGrowth,
-            transactionCountGrowth,
-            transactionVolumeGrowth,
+            transactionCountGrowth: txGrowth,
+            currentTransactionCount: currentTx,
+            previousTransactionCount: prevTx,
+
+            transactionVolumeGrowth: volGrowth,
+            currentTransactionVolume: currentVol,
+            previousTransactionVolume: prevVol,
+            volumeKES: currentVolKES,
+            previousVolumeKES: prevVolKES,
+
+            revenueGrowth: revGrowth,
+            currentRevenue: currentRev,
+            previousRevenue: prevRev,
+
             userGrowth,
-            currentRevenue,
-            previousRevenue,
-            currentTransactionCount: currentTransCount,
-            previousTransactionCount: previousTransCount,
-            currentTransactionVolume: currentVolume,
-            previousTransactionVolume: previousVolume,
-            currentActiveUsers,
-            previousActiveUsers,
-            volumeKES: currentVolumeKES,
-            previousVolumeKES,
-            exchangeRate: currency === 'KES' ? 1 : (exchangeRates[currency] || 1)
+            currentActiveUsers: currActive,
+            previousActiveUsers: prevActive
           };
         });
 
-        // Get transaction data from Currency_Summary for Volume tab
-        const transactionData = currencySummary.map(item => ({
-          currency: item.Currency,
-          transactions: parseInt(item.Transactions.replace(/,/g, '')),
-          volume: parseFloat(item.Total_Volume.replace(/,/g, '')),
-          fees: parseFloat(item.Total_Fees_Original.replace(/,/g, ''))
-        }));
-
         // Prepare data for log scale charts
-        const preparedMonthlyTrends = transformForLogScale(rawMonthlyTrends, ['transactions', 'revenue', 'users', 'volume']);
-        const preparedGrowthRates = {
-          user: transformForLogScale(rawGrowthRates.user, ['users']),
-          revenue: transformForLogScale(rawGrowthRates.revenue, ['revenue']),
-          volume: transformForLogScale(rawGrowthRates.volume, ['volume'])
+        const monthlyTrends = transformForLogScale(monthlyTrendsRaw, ['transactions','revenue','users','volume']);
+        const growthRates = {
+          user: transformForLogScale(growthRatesRaw.user, ['users']),
+          revenue: transformForLogScale(growthRatesRaw.revenue, ['revenue']),
+          volume: transformForLogScale(growthRatesRaw.volume, ['volume'])
         };
-        
-        // Set all the dashboard data
+
+        // Final key metrics
+        const keyMetrics = {
+          totalRevenue: totalKesRevenue,
+          totalTransactions,
+          totalUsers,
+          // distinct active users across the last 30 days (all currencies)
+          activeUsers: distinctActiveUsers
+        };
+
         setData({
           keyMetrics,
-          currencyData: transactionData,
-          monthlyTrends: preparedMonthlyTrends,
+          currencyData: [], // if you want to fill from some other summary
+          monthlyTrends,
           mtdGrowth: mtdGrowthData,
-          growthRates: preparedGrowthRates,
+          growthRates,
           exchangeRates
         });
-        
+
         setLoading(false);
-      } catch (error) {
-        console.error('Error loading data:', error);
-        setError(error);
+      } catch (err) {
+        console.error('Error loading data:', err);
+        setError(err);
         setLoading(false);
       }
     };
@@ -472,7 +386,6 @@ const FinancialDashboard = () => {
     loadData();
   }, []);
 
-  // Add error handling
   if (error) {
     return (
       <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative m-4">
