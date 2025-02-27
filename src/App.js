@@ -82,15 +82,18 @@ const FinancialDashboard = () => {
       try {
         setLoading(true);
         
-        // Read Excel file
-        const response = await window.fs.readFile('financial_analysis_20250227_115233.xlsx');
-        const workbook = XLSX.read(response, {
-          cellStyles: true,
-          cellFormulas: true,
-          cellDates: true,
-          cellNF: true,
-          sheetStubs: true
-        });
+        // Read Excel file using fetch for browser environment
+        const response = await fetch('/financial_analysis_20250227_115233.xlsx')
+          .then(res => {
+            if (!res.ok) {
+              throw new Error(`Failed to fetch Excel file (${res.status})`);
+            }
+            return res.arrayBuffer();
+          })
+          .catch(err => {
+            console.error("Error loading Excel file:", err);
+            throw err;
+          });
 
         // Extract sheet data helper function
         const extractSheetData = (sheetName) => {
