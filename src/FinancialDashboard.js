@@ -11,7 +11,11 @@ const FinancialDashboard = () => {
       totalRevenue: 0,
       totalTransactions: 0,
       totalUsers: 0,
-      activeUsers: 0
+      activeUsers: 0,
+      activePrevUsers: 0,
+      overallUserGrowth: 0,
+      overallVolumeGrowth: 0,
+      overallRevenueGrowth: 0
     },
     currencyData: [],
     monthlyTrends: [],
@@ -96,16 +100,6 @@ const FinancialDashboard = () => {
     return volume * (rates[currency] || 1);
   };
 
-  // Helper: Sum transaction counts across currencies
-  const sumTxCount = (row) => {
-    const cny = parseFloat(row.CNY || 0);
-    const kes = parseFloat(row.KES || 0);
-    const ngn = parseFloat(row.NGN || 0);
-    const ugx = parseFloat(row.UGX || 0);
-    const usd = parseFloat(row.USD || 0);
-    return cny + kes + ngn + ugx + usd;
-  };
-
   // Compute active users by currency for a calendar month range
   const getActiveUsersByCurrencyInRange = (walletBalances, startDate, endDate) => {
     const activeByCurrency = { KES: 0, UGX: 0, NGN: 0, USD: 0, CNY: 0 };
@@ -185,7 +179,6 @@ const FinancialDashboard = () => {
         const previousActiveByCurrency = getActiveUsersByCurrencyInRange(walletBalances, janStart, janEnd);
 
         // Summed total active users across all currencies in current period
-        // (If a user is active in multiple currencies, they might be counted multiple times. If you want distinct user count, you need a different approach.)
         let sumCurrentActive = 0;
         let sumPreviousActive = 0;
         Object.keys(currentActiveByCurrency).forEach(cur => {
@@ -410,6 +403,7 @@ const FinancialDashboard = () => {
           totalTransactions,
           totalUsers,
           activeUsers: distinctActiveUsers,
+          activePrevUsers: distinctActiveUsersPrev,
           overallUserGrowth,
           overallVolumeGrowth,
           overallRevenueGrowth,
@@ -474,7 +468,7 @@ const FinancialDashboard = () => {
               />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-800 mb-2">Alpha Tribe Performance</h1>
+              <h1 className="text-2xl font-bold text-gray-800 mb-2">Alpha Tribe Performance Dashboard</h1>
               <p className="text-gray-600">Data as of February 27, 2025</p>
             </div>
           </div>
@@ -514,21 +508,23 @@ const FinancialDashboard = () => {
             {/* MTD Growth Metrics */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-gray-500 text-sm font-medium mb-1">MTD User Growth</h3>
+                <h3 className="text-gray-500 text-sm font-medium mb-1">February User Growth</h3>
                 <div className="text-3xl font-bold text-gray-900">
                   {formatMultiplier(data.keyMetrics.overallUserGrowth)}
                 </div>
                 <div className="mt-4">
-                  <div className="text-sm text-gray-500">Current Active Users</div>
+                  <div className="text-sm text-gray-500">February Active Users</div>
                   <div className="text-xl font-semibold text-gray-800">{formatNumber(data.keyMetrics.activeUsers)}</div>
+                  <div className="text-sm text-gray-500">January Active Users</div>
+                  <div className="text-xl font-semibold text-gray-800">{formatNumber(data.keyMetrics.activePrevUsers)}</div>
                   <div className="text-xs text-gray-500 mt-1 italic">
-                    Users with transactions in the last 30 days
+                    Users with transactions in their respective calendar months
                   </div>
                 </div>
               </div>
               
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-gray-500 text-sm font-medium mb-1">MTD Revenue Growth</h3>
+                <h3 className="text-gray-500 text-sm font-medium mb-1">February Revenue Growth</h3>
                 <div className="text-3xl font-bold text-gray-900">
                   {formatMultiplier(data.keyMetrics.overallRevenueGrowth)}
                 </div>
@@ -539,12 +535,12 @@ const FinancialDashboard = () => {
               </div>
               
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-gray-500 text-sm font-medium mb-1">MTD Transaction Volume Growth</h3>
+                <h3 className="text-gray-500 text-sm font-medium mb-1">February Transaction Volume Growth</h3>
                 <div className="text-3xl font-bold text-gray-900">
                   {formatMultiplier(data.keyMetrics.overallVolumeGrowth)}
                 </div>
                 <div className="mt-4">
-                  <div className="text-sm text-gray-500">Current Transaction Volume</div>
+                  <div className="text-sm text-gray-500">Current Transaction Volume (KES)</div>
                   <div className="text-xl font-semibold text-gray-800">
                     KES {formatNumber(data.keyMetrics.totalVolumeKES)}
                   </div>
@@ -641,20 +637,23 @@ const FinancialDashboard = () => {
               </div>
               
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-gray-500 text-sm font-medium mb-1">Active Users</h3>
+                <h3 className="text-gray-500 text-sm font-medium mb-1">February Active Users</h3>
                 <div className="text-3xl font-bold text-gray-900">{formatNumber(data.keyMetrics.activeUsers)}</div>
                 <div className="text-sm text-gray-500 mt-1">
                   ({formatMultiplier((data.keyMetrics.activeUsers / data.keyMetrics.totalUsers) * 100)} of total)
                 </div>
                 <div className="text-xs text-gray-500 mt-1 italic">
-                  Users with transactions in the last 30 days
+                  Users with transactions in February 2025
                 </div>
               </div>
               
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-gray-500 text-sm font-medium mb-1">MTD User Growth</h3>
+                <h3 className="text-gray-500 text-sm font-medium mb-1">February User Growth</h3>
                 <div className="text-3xl font-bold text-gray-900" style={{ color: getGrowthColor(data.keyMetrics.overallUserGrowth) }}>
                   {formatMultiplier(data.keyMetrics.overallUserGrowth)}
+                </div>
+                <div className="text-xs text-gray-500 mt-1 italic">
+                  Comparing February vs January active users
                 </div>
               </div>
             </div>
@@ -705,14 +704,14 @@ const FinancialDashboard = () => {
 
             {/* User Growth by Currency */}
             <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">User Growth by Currency (MTD)</h3>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">User Growth by Currency (Feb vs Jan)</h3>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Currency</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Active Users</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Previous Month</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">February Active Users</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">January Active Users</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Growth</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     </tr>
@@ -758,10 +757,10 @@ const FinancialDashboard = () => {
                         : 'N/A'}
                     </div>
                     <div className="text-sm text-gray-500 mt-1">
-                      Current: {formatNumber(currency.currentRevenue)} {currency.currency}
+                      February: {formatNumber(currency.currentRevenue)} {currency.currency}
                     </div>
                     <div className="text-sm text-gray-500 mt-1">
-                      Previous: {formatNumber(currency.previousRevenue)} {currency.currency}
+                      January: {formatNumber(currency.previousRevenue)} {currency.currency}
                     </div>
                     <div className="text-xs text-gray-400 mt-1">
                       {currency.currency === 'KES' ? 'Base currency' :
@@ -835,14 +834,14 @@ const FinancialDashboard = () => {
 
             {/* Revenue Growth by Currency */}
             <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">Revenue Growth by Currency (MTD)</h3>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Revenue Growth by Currency (Feb vs Jan)</h3>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Currency</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Revenue</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Previous Month</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">February Revenue</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">January Revenue</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Growth</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     </tr>
@@ -891,21 +890,24 @@ const FinancialDashboard = () => {
             {/* Volume Growth Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-gray-500 text-sm font-medium mb-1">Total Transactions</h3>
+                <h3 className="text-gray-500 text-sm font-medium mb-1">February Total Transactions</h3>
                 <div className="text-3xl font-bold text-gray-900">
                   {formatNumber(data.keyMetrics.totalTransactions)}
+                </div>
+                <div className="text-xs text-gray-500 mt-1 italic">
+                  Using Total column from CSV directly
                 </div>
               </div>
               
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-gray-500 text-sm font-medium mb-1">Current Month Transactions</h3>
+                <h3 className="text-gray-500 text-sm font-medium mb-1">February Transactions</h3>
                 <div className="text-3xl font-bold text-gray-900">
                   {formatNumber(data.monthlyTrends[data.monthlyTrends.length - 1]?.transactions || 0)}
                 </div>
               </div>
               
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-gray-500 text-sm font-medium mb-1">Transaction Count Growth</h3>
+                <h3 className="text-gray-500 text-sm font-medium mb-1">Transaction Volume Growth (KES)</h3>
                 <div className="text-3xl font-bold text-gray-900" style={{ color: getGrowthColor(data.keyMetrics.overallVolumeGrowth) }}>
                   {formatMultiplier(data.keyMetrics.overallVolumeGrowth)}
                 </div>
@@ -914,7 +916,7 @@ const FinancialDashboard = () => {
 
             {/* Monthly Volume Trend */}
             <div className="bg-white rounded-lg shadow p-6 mb-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">Monthly Transaction Volume Trend</h3>
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">Monthly Transaction Volume Trend (KES)</h3>
               <p className="text-xs text-gray-500 mb-2 italic">Using logarithmic scale for better visualization of growth patterns</p>
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
@@ -958,14 +960,14 @@ const FinancialDashboard = () => {
 
             {/* Volume Growth by Currency */}
             <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">Volume Growth by Currency (MTD)</h3>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Volume Growth by Currency (Feb vs Jan)</h3>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Currency</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Volume</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Previous Month</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">February Volume</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">January Volume</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">KES Equivalent</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Growth (KES)</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
