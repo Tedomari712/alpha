@@ -347,6 +347,7 @@ const FinancialDashboard = () => {
                 alt="Alpha Tribe Performance Logo" 
                 className="h-full"
                 onError={(e) => {
+                  console.error("Logo failed to load");
                   e.target.onerror = null;
                   e.target.style.display = 'none';
                 }}
