@@ -90,6 +90,22 @@ const FinancialDashboard = () => {
     return 0;
   };
 
+  // Helper: Convert a volume to KES
+  const convertToKES = (volume, currency, rates) => {
+    if (!currency || currency === 'KES') return volume;
+    return volume * (rates[currency] || 1);
+  };
+
+  // Helper: Sum transaction counts across currencies
+  const sumTxCount = (row) => {
+    const cny = parseFloat(row.CNY || 0);
+    const kes = parseFloat(row.KES || 0);
+    const ngn = parseFloat(row.NGN || 0);
+    const ugx = parseFloat(row.UGX || 0);
+    const usd = parseFloat(row.USD || 0);
+    return cny + kes + ngn + ugx + usd;
+  };
+
   // Compute active users by currency for a given date range
   const getActiveUsersByCurrencyInRange = (walletBalances, startDate, endDate) => {
     const activeByCurrency = { KES: 0, UGX: 0, NGN: 0, USD: 0, CNY: 0 };
@@ -197,9 +213,9 @@ const FinancialDashboard = () => {
           totalUsers = walletBalances.length;
         }
 
-        // total transactions => from the most recent month in Monthly_Transaction_Count (2025-02)
+        // total transactions => Sum transaction counts manually instead of using the 'Total' column
         const febCountRow = monthlyTransactionCount.find(m => m.YearMonth === '2025-02');
-        const totalTransactions = febCountRow ? parseInt(febCountRow.Total || 0, 10) : 0;
+        const totalTransactions = febCountRow ? sumTxCount(febCountRow) : 0;
 
         // total revenue => from the most recent month in Monthly_Revenue (2025-02), converting all to KES
         const febRevenueRow = monthlyRevenue.find(m => m.YearMonth === '2025-02');
@@ -221,6 +237,9 @@ const FinancialDashboard = () => {
             const revRow = monthlyRevenue.find(r => r.YearMonth === ym) || {};
             const volRow = monthlyVolume.find(v => v.YearMonth === ym) || {};
 
+            // Sum transaction counts manually
+            const txCount = sumTxCount(item);
+
             // Sum revenue (KES + conversions)
             let revKES = 0;
             if (revRow.KES) revKES += parseFloat(revRow.KES);
@@ -229,8 +248,13 @@ const FinancialDashboard = () => {
             if (revRow.USD) revKES += parseFloat(revRow.USD) * exchangeRates.USD;
             if (revRow.CNY) revKES += parseFloat(revRow.CNY) * exchangeRates.CNY;
 
-            const txCount = parseInt(item.Total || 0, 10);
-            const vol = parseFloat(volRow.Total || 0);
+            // Sum volume and convert to KES
+            let volKES = 0;
+            if (volRow.KES) volKES += parseFloat(volRow.KES);
+            if (volRow.NGN) volKES += parseFloat(volRow.NGN) * exchangeRates.NGN;
+            if (volRow.UGX) volKES += parseFloat(volRow.UGX) * exchangeRates.UGX;
+            if (volRow.USD) volKES += parseFloat(volRow.USD) * exchangeRates.USD;
+            if (volRow.CNY) volKES += parseFloat(volRow.CNY) * exchangeRates.CNY;
 
             return {
               month: ym,
@@ -239,7 +263,7 @@ const FinancialDashboard = () => {
               // We are *not* using monthlyActiveUsers; let's treat "users" as 0 or some placeholder
               // If you want a chart of total distinct active users monthly, you'd need a different approach
               users: 0,
-              volume: vol
+              volume: volKES // Now using KES-converted volume
             };
           });
 
@@ -294,28 +318,16 @@ const FinancialDashboard = () => {
           const prevTx = parseFloat(janTxRow[currency] || 0);
           const txGrowth = calcGrowth(currentTx, prevTx);
 
-          // volume
+          // volume in raw currency
           const currentVol = parseFloat(febVolRow[currency] || 0);
           const prevVol = parseFloat(janVolRow[currency] || 0);
-          const volGrowth = calcGrowth(currentVol, prevVol);
 
-          // convert currentVol to KES
-          let currentVolKES = currentVol;
-          if (currency !== 'KES') {
-            if (exchangeRates[currency]) {
-              // If currency = NGN => multiply by (1/11.59)? Actually we do `currentVol * exchangeRate`
-              // But note your code does the inverse for NGN, UGX. Double-check your earlier logic to keep consistent.
-              // For consistency, let's do: if 1 KES = 11.59 NGN, then 1 NGN = 1/11.59 KES
-              // exchangeRates.NGN = 1/11.59 => multiply currentVol by (1/11.59)
-              currentVolKES = currentVol * exchangeRates[currency];
-            }
-          }
-          let prevVolKES = prevVol;
-          if (currency !== 'KES') {
-            if (exchangeRates[currency]) {
-              prevVolKES = prevVol * exchangeRates[currency];
-            }
-          }
+          // convert to KES
+          const currentVolKES = convertToKES(currentVol, currency, exchangeRates);
+          const prevVolKES = convertToKES(prevVol, currency, exchangeRates);
+          
+          // Calculate growth based on KES values (FIXED)
+          const volGrowth = calcGrowth(currentVolKES, prevVolKES);
 
           // revenue
           const currentRev = parseFloat(febRevRow[currency] || 0);
@@ -333,7 +345,7 @@ const FinancialDashboard = () => {
             currentTransactionCount: currentTx,
             previousTransactionCount: prevTx,
 
-            transactionVolumeGrowth: volGrowth,
+            transactionVolumeGrowth: volGrowth, // Now using KES-based growth
             currentTransactionVolume: currentVol,
             previousTransactionVolume: prevVol,
             volumeKES: currentVolKES,
@@ -349,6 +361,36 @@ const FinancialDashboard = () => {
           };
         });
 
+        // Calculate overall growth metrics for overview section
+        // User growth
+        const overallUserGrowth = calcGrowth(sumCurrentActive, sumPreviousActive);
+        
+        // Volume growth - sum Feb volumes in KES, sum Jan volumes in KES, then calculate growth
+        const febVolumesKES = currencies.reduce((sum, currency) => {
+          const vol = parseFloat(febVolRow[currency] || 0);
+          return sum + convertToKES(vol, currency, exchangeRates);
+        }, 0);
+        
+        const janVolumesKES = currencies.reduce((sum, currency) => {
+          const vol = parseFloat(janVolRow[currency] || 0);
+          return sum + convertToKES(vol, currency, exchangeRates);
+        }, 0);
+        
+        const overallVolumeGrowth = calcGrowth(febVolumesKES, janVolumesKES);
+        
+        // Revenue growth - calculate similar to volume
+        const febRevenueKES = currencies.reduce((sum, currency) => {
+          const rev = parseFloat(febRevRow[currency] || 0);
+          return sum + convertToKES(rev, currency, exchangeRates);
+        }, 0);
+        
+        const janRevenueKES = currencies.reduce((sum, currency) => {
+          const rev = parseFloat(janRevRow[currency] || 0);
+          return sum + convertToKES(rev, currency, exchangeRates);
+        }, 0);
+        
+        const overallRevenueGrowth = calcGrowth(febRevenueKES, janRevenueKES);
+
         // Prepare data for log scale charts
         const monthlyTrends = transformForLogScale(monthlyTrendsRaw, ['transactions','revenue','users','volume']);
         const growthRates = {
@@ -362,8 +404,11 @@ const FinancialDashboard = () => {
           totalRevenue: totalKesRevenue,
           totalTransactions,
           totalUsers,
-          // distinct active users across the last 30 days (all currencies)
-          activeUsers: distinctActiveUsers
+          activeUsers: distinctActiveUsers,
+          overallUserGrowth,
+          overallVolumeGrowth,
+          overallRevenueGrowth,
+          totalVolumeKES: febVolumesKES
         };
 
         setData({
@@ -466,7 +511,7 @@ const FinancialDashboard = () => {
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-gray-500 text-sm font-medium mb-1">MTD User Growth</h3>
                 <div className="text-3xl font-bold text-gray-900">
-                  {data.mtdGrowth[1] ? formatMultiplier(data.mtdGrowth[1].userGrowth) : 'N/A'}
+                  {formatMultiplier(data.keyMetrics.overallUserGrowth)}
                 </div>
                 <div className="mt-4">
                   <div className="text-sm text-gray-500">Current Active Users</div>
@@ -480,7 +525,7 @@ const FinancialDashboard = () => {
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-gray-500 text-sm font-medium mb-1">MTD Revenue Growth</h3>
                 <div className="text-3xl font-bold text-gray-900">
-                  {data.mtdGrowth[1] ? formatMultiplier(data.mtdGrowth[1].revenueGrowth) : 'N/A'}
+                  {formatMultiplier(data.keyMetrics.overallRevenueGrowth)}
                 </div>
                 <div className="mt-4">
                   <div className="text-sm text-gray-500">Current Revenue</div>
@@ -491,12 +536,12 @@ const FinancialDashboard = () => {
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-gray-500 text-sm font-medium mb-1">MTD Transaction Volume Growth</h3>
                 <div className="text-3xl font-bold text-gray-900">
-                  {data.mtdGrowth[1] ? formatMultiplier(data.mtdGrowth[1].transactionVolumeGrowth) : 'N/A'}
+                  {formatMultiplier(data.keyMetrics.overallVolumeGrowth)}
                 </div>
                 <div className="mt-4">
                   <div className="text-sm text-gray-500">Current Transaction Volume</div>
                   <div className="text-xl font-semibold text-gray-800">
-                    {data.mtdGrowth[1] ? formatNumber(data.mtdGrowth[1].currentTransactionVolume) : 'N/A'}
+                    KES {formatNumber(data.keyMetrics.totalVolumeKES)}
                   </div>
                 </div>
               </div>
@@ -603,8 +648,8 @@ const FinancialDashboard = () => {
               
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-gray-500 text-sm font-medium mb-1">MTD User Growth</h3>
-                <div className="text-3xl font-bold text-gray-900" style={{ color: getGrowthColor(data.mtdGrowth[1]?.userGrowth) }}>
-                  {data.mtdGrowth[1] ? formatMultiplier(data.mtdGrowth[1].userGrowth) : 'N/A'}
+                <div className="text-3xl font-bold text-gray-900" style={{ color: getGrowthColor(data.keyMetrics.overallUserGrowth) }}>
+                  {formatMultiplier(data.keyMetrics.overallUserGrowth)}
                 </div>
               </div>
             </div>
@@ -856,8 +901,8 @@ const FinancialDashboard = () => {
               
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-gray-500 text-sm font-medium mb-1">Transaction Count Growth</h3>
-                <div className="text-3xl font-bold text-gray-900" style={{ color: getGrowthColor(data.mtdGrowth[1]?.transactionCountGrowth) }}>
-                  {data.mtdGrowth[1] ? formatMultiplier(data.mtdGrowth[1].transactionCountGrowth) : 'N/A'}
+                <div className="text-3xl font-bold text-gray-900" style={{ color: getGrowthColor(data.keyMetrics.overallVolumeGrowth) }}>
+                  {formatMultiplier(data.keyMetrics.overallVolumeGrowth)}
                 </div>
               </div>
             </div>
@@ -875,9 +920,9 @@ const FinancialDashboard = () => {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="month" />
                     <YAxis scale="log" domain={['auto', 'auto']} allowDataOverflow={true} />
-                    <Tooltip formatter={(value) => formatNumber(value)} />
+                    <Tooltip formatter={(value) => `KES ${formatNumber(value)}`} />
                     <Legend />
-                    <Bar dataKey="volume" name="Transaction Volume" fill={COLORS.volume} />
+                    <Bar dataKey="volume" name="Transaction Volume (KES)" fill={COLORS.volume} />
                     <Line type="monotone" dataKey="volume" name="Volume Trend" stroke="#00C49F" dot={true} />
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -899,7 +944,7 @@ const FinancialDashboard = () => {
                     <YAxis yAxisId="right" orientation="right" />
                     <Tooltip />
                     <Legend />
-                    <Bar yAxisId="left" dataKey="volume" name="Volume" fill={COLORS.volume} />
+                    <Bar yAxisId="left" dataKey="volume" name="Volume (KES)" fill={COLORS.volume} />
                     <Line yAxisId="right" type="monotone" dataKey="growth" name="Growth Rate (%)" stroke="#8884d8" />
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -917,7 +962,7 @@ const FinancialDashboard = () => {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Volume</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Previous Month</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">KES Equivalent</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Growth</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Growth (KES)</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     </tr>
                   </thead>
