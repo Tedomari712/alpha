@@ -95,6 +95,8 @@ const FinancialDashboard = () => {
             throw err;
           });
 
+        const workbook = XLSX.read(response, { type: 'array' });
+
         // Extract sheet data helper function
         const extractSheetData = (sheetName) => {
           const sheet = workbook.Sheets[sheetName];
