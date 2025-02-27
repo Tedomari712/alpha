@@ -22,6 +22,7 @@ const FinancialDashboard = () => {
   });
   
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
 
   // Format numbers helper function
@@ -40,13 +41,12 @@ const FinancialDashboard = () => {
     return num.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   };
 
-  // Format percentage helper
+  // Format percentage helper as multiplier
   const formatMultiplier = (num) => {
-  if (num === null || num === undefined || !isFinite(num)) return 'N/A';
-  // Convert percentage to multiplier, e.g., 20 becomes 1.2x
-  return (1 + num / 100).toFixed(1) + 'x';
-};
-
+    if (num === null || num === undefined || !isFinite(num)) return 'N/A';
+    // Convert percentage to multiplier, e.g., 20 becomes 1.2x
+    return (1 + num / 100).toFixed(1) + 'x';
+  };
   
   // Helper for log scale data transformation
   const transformForLogScale = (dataArray, keys) => {
@@ -83,6 +83,7 @@ const FinancialDashboard = () => {
     const loadData = async () => {
       try {
         setLoading(true);
+        setError(null);
         
         // Read Excel file using fetch for browser environment
         const response = await fetch('/financial_analysis_20250227_115233.xlsx')
@@ -105,12 +106,12 @@ const FinancialDashboard = () => {
           return XLSX.utils.sheet_to_json(sheet, {raw: false});
         };
 
-        // Get data from key sheets
-        const revenueSummary = extractSheetData('Revenue_Summary');
-        const currencySummary = extractSheetData('Currency_Summary');
+        // Get data from key sheets - ONLY USING MONTHLY SHEETS AND BASE DATA
         const userStats = extractSheetData('User_Statistics');
-        const mtdSummary = extractSheetData('MTD_Summary');
         const walletBalances = extractSheetData('Wallet_Balances');
+        const currencySummary = extractSheetData('Currency_Summary');
+        
+        // MONTHLY SHEETS - These are our primary data sources now
         const monthlyTransactionCount = extractSheetData('Monthly_Transaction_Count');
         const monthlyRevenue = extractSheetData('Monthly_Revenue');
         const monthlyActiveUsers = extractSheetData('Monthly_Active_Users');
@@ -129,7 +130,7 @@ const FinancialDashboard = () => {
         
         const activeUsersCount = activeUsers.length;
 
-        // Use fixed exchange rates instead of calculating from data
+        // Use fixed exchange rates
         const exchangeRates = {
           'UGX': 1/28.4659,  // 1 UGX to KES
           'USD': 129.3827,   // 1 USD to KES
@@ -145,30 +146,27 @@ const FinancialDashboard = () => {
           activeUsers: activeUsersCount
         };
 
-        // Calculate total revenue in KES using fixed exchange rates
-        let totalRevenueKES = 0;
-        currencySummary.forEach(row => {
-          const currency = row.Currency;
-          const feeOriginal = parseFloat(row.Total_Fees_Original.replace(/,/g, ''));
-          
-          if (currency === 'KES') {
-            totalRevenueKES += feeOriginal;
-          } else if (exchangeRates[currency]) {
-            totalRevenueKES += feeOriginal * exchangeRates[currency];
-          }
-        });
+        // Get the total revenue - sum the last month (February 2025)
+        const febData = monthlyRevenue.find(m => m.YearMonth === '2025-02');
+        if (febData) {
+          let totalKesRevenue = 0;
+          // KES is already in KES
+          if (febData.KES && febData.KES !== "") totalKesRevenue += parseFloat(febData.KES);
+          // Convert other currencies to KES
+          if (febData.NGN && febData.NGN !== "") totalKesRevenue += parseFloat(febData.NGN) * exchangeRates.NGN;
+          if (febData.UGX && febData.UGX !== "") totalKesRevenue += parseFloat(febData.UGX) * exchangeRates.UGX;
+          if (febData.USD && febData.USD !== "") totalKesRevenue += parseFloat(febData.USD) * exchangeRates.USD;
+          if (febData.CNY && febData.CNY !== "") totalKesRevenue += parseFloat(febData.CNY) * exchangeRates.CNY;
+          keyMetrics.totalRevenue = totalKesRevenue;
+        }
 
-        // From Revenue Summary
-        revenueSummary.forEach(item => {
-          if (item.Metric === 'Total Successful Transactions') {
-            keyMetrics.totalTransactions = parseInt(item.Value.replace(/,/g, ''));
-          }
-        });
+        // Get total transactions from the last month
+        const febTransactions = monthlyTransactionCount.find(m => m.YearMonth === '2025-02');
+        if (febTransactions && febTransactions.Total) {
+          keyMetrics.totalTransactions = parseInt(febTransactions.Total);
+        }
         
-        // Use our calculated KES total
-        keyMetrics.totalRevenue = totalRevenueKES;
-
-        // From User Statistics
+        // Get total users
         userStats.forEach(item => {
           if (item.Metric === 'Total Users') {
             keyMetrics.totalUsers = parseInt(item.Value.replace(/,/g, ''));
@@ -188,7 +186,8 @@ const FinancialDashboard = () => {
             let totalKESRevenue = 0;
             if (revenueRow) {
               // KES is already in KES, no conversion needed
-              if (revenueRow.KES) totalKESRevenue += parseFloat(revenueRow.KES || 0);
+              if (revenueRow.KES && revenueRow.KES !== '') 
+                totalKESRevenue += parseFloat(revenueRow.KES || 0);
               
               // Convert other currencies to KES
               if (revenueRow.NGN && revenueRow.NGN !== '') 
@@ -258,22 +257,39 @@ const FinancialDashboard = () => {
           });
         }
 
-        // Fix MTD Growth metrics with original currency revenue from Monthly_Revenue
-        const mtdGrowthData = mtdSummary.map(item => {
-          const currency = item.Currency;
+        // Calculate MTD Growth directly from monthly data
+        // Find Jan and Feb data for direct comparison
+        const febRevenueData = monthlyRevenue.find(m => m.YearMonth === '2025-02');
+        const janRevenueData = monthlyRevenue.find(m => m.YearMonth === '2025-01');
+        const febTransactionData = monthlyTransactionCount.find(m => m.YearMonth === '2025-02');
+        const janTransactionData = monthlyTransactionCount.find(m => m.YearMonth === '2025-01');
+        const febVolumeData = monthlyVolume.find(m => m.YearMonth === '2025-02');
+        const janVolumeData = monthlyVolume.find(m => m.YearMonth === '2025-01');
+
+        // Define the currencies we're tracking
+        const currencies = ['KES', 'UGX', 'NGN', 'USD', 'CNY'];
+        
+        // Calculate growth metrics for each currency
+        const mtdGrowthData = currencies.map(currency => {
+          // Get current and previous revenue
+          const currentRevenue = febRevenueData && febRevenueData[currency] ? 
+            parseFloat(febRevenueData[currency]) : 0;
+          const previousRevenue = janRevenueData && janRevenueData[currency] ? 
+            parseFloat(janRevenueData[currency]) : 0;
           
-          // Get the correct current month and previous month revenue from Monthly_Revenue
-          const currentMonthData = monthlyRevenue.find(m => m.YearMonth === '2025-02');
-          const previousMonthData = monthlyRevenue.find(m => m.YearMonth === '2025-01');
+          // Get current and previous transaction counts
+          const currentTransCount = febTransactionData && febTransactionData[currency] ? 
+            parseFloat(febTransactionData[currency]) : 0;
+          const previousTransCount = janTransactionData && janTransactionData[currency] ? 
+            parseFloat(janTransactionData[currency]) : 0;
           
-          // Access the correct currency column and parse to float
-          const currentRevenue = currentMonthData && currentMonthData[currency] ? 
-            parseFloat(currentMonthData[currency]) : 0;
-            
-          const previousRevenue = previousMonthData && previousMonthData[currency] ? 
-            parseFloat(previousMonthData[currency]) : 0;
+          // Get current and previous volume
+          const currentVolume = febVolumeData && febVolumeData[currency] ? 
+            parseFloat(febVolumeData[currency]) : 0;
+          const previousVolume = janVolumeData && janVolumeData[currency] ? 
+            parseFloat(janVolumeData[currency]) : 0;
           
-          // Calculate growth correctly
+          // Calculate growth rates
           let revenueGrowth = 0;
           if (previousRevenue > 0) {
             revenueGrowth = ((currentRevenue - previousRevenue) / previousRevenue) * 100;
@@ -281,15 +297,31 @@ const FinancialDashboard = () => {
             revenueGrowth = 100; // If previous was 0 but current is not, show as 100% growth
           }
           
+          let transactionCountGrowth = 0;
+          if (previousTransCount > 0) {
+            transactionCountGrowth = ((currentTransCount - previousTransCount) / previousTransCount) * 100;
+          } else if (currentTransCount > 0) {
+            transactionCountGrowth = 100;
+          }
+          
+          let transactionVolumeGrowth = 0;
+          if (previousVolume > 0) {
+            transactionVolumeGrowth = ((currentVolume - previousVolume) / previousVolume) * 100;
+          } else if (currentVolume > 0) {
+            transactionVolumeGrowth = 100;
+          }
+          
           return {
             currency,
-            transactionCountGrowth: parseFloat(item.Transaction_Count_MTD_Growth || 0),
-            transactionVolumeGrowth: parseFloat(item.Transaction_Volume_MTD_Growth || 0),
+            revenueGrowth,
+            transactionCountGrowth,
+            transactionVolumeGrowth,
             currentRevenue,
             previousRevenue,
-            revenueGrowth,
-            currentTransactionCount: parseFloat(item.Current_Transaction_Count || 0),
-            currentTransactionVolume: parseFloat(item.Current_Transaction_Volume || 0),
+            currentTransactionCount: currentTransCount,
+            previousTransactionCount: previousTransCount,
+            currentTransactionVolume: currentVolume,
+            previousTransactionVolume: previousVolume,
             exchangeRate: currency === 'KES' ? 1 : (exchangeRates[currency] || 1)
           };
         });
@@ -323,12 +355,24 @@ const FinancialDashboard = () => {
         setLoading(false);
       } catch (error) {
         console.error('Error loading data:', error);
+        setError(error);
         setLoading(false);
       }
     };
 
     loadData();
   }, []);
+
+  // Add error handling
+  if (error) {
+    return (
+      <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative m-4">
+        <strong className="font-bold">Error loading data:</strong>
+        <span className="block sm:inline"> {error.message || "Failed to load dashboard data"}</span>
+        <p className="mt-2">Please check that your Excel file is properly uploaded to the public folder.</p>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -596,8 +640,9 @@ const FinancialDashboard = () => {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Currency</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Users</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transaction Count Growth</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Growth Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Previous Month</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Growth</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -605,6 +650,7 @@ const FinancialDashboard = () => {
                       <tr key={index}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{item.currency}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatNumber(item.currentTransactionCount)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatNumber(item.previousTransactionCount)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatMultiplier(item.transactionCountGrowth)}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
@@ -724,8 +770,9 @@ const FinancialDashboard = () => {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Currency</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Revenue</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue Growth</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Growth Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Previous Month</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Growth</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -733,7 +780,10 @@ const FinancialDashboard = () => {
                       <tr key={index}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{item.currency}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
-                          {item.currentRevenue} {item.currency}
+                          {formatNumber(item.currentRevenue)} {item.currency}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
+                          {formatNumber(item.previousRevenue)} {item.currency}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
                           {item.revenueGrowth !== null && isFinite(item.revenueGrowth) ? formatMultiplier(item.revenueGrowth) : 'N/A'}
@@ -843,16 +893,24 @@ const FinancialDashboard = () => {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Currency</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Volume</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Volume Growth</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Growth Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Previous Month</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Growth</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {data.mtdGrowth.map((item, index) => (
                       <tr key={index}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{item.currency}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatNumber(item.currentTransactionVolume)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatMultiplier(item.transactionVolumeGrowth)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
+                          {formatNumber(item.currentTransactionVolume)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
+                          {formatNumber(item.previousTransactionVolume)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
+                          {formatMultiplier(item.transactionVolumeGrowth)}
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                             ${item.transactionVolumeGrowth > 10 ? 'bg-green-100 text-green-800' : 
