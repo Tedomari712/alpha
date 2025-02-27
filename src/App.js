@@ -117,6 +117,9 @@ const FinancialDashboard = () => {
         const monthlyActiveUsers = extractSheetData('Monthly_Active_Users');
         const monthlyVolume = extractSheetData('Monthly_Transaction_Volume');
 
+        // Define the currencies we're tracking first, since we'll use this throughout
+        const currencies = ['KES', 'UGX', 'NGN', 'USD', 'CNY'];
+        
         // Calculate active users (transactions in the last 30 days) from Wallet_Balances
         const now = new Date();
         const thirtyDaysAgo = new Date();
@@ -131,14 +134,11 @@ const FinancialDashboard = () => {
         
         const activeUsersCount = activeUsers.length;
         
-        // Count active users by currency
-        const activeUsersByCurrency = {
-          'KES': 0,
-          'UGX': 0,
-          'NGN': 0, 
-          'USD': 0,
-          'CNY': 0
-        };
+        // Initialize active users by currency object
+        const activeUsersByCurrency = {};
+        currencies.forEach(currency => {
+          activeUsersByCurrency[currency] = 0;
+        });
         
         // For each active user, check which currencies they have balances in
         activeUsers.forEach(user => {
