@@ -122,6 +122,7 @@ const FinancialDashboard = () => {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(now.getDate() - 30);
 
+        // Get all active users
         const activeUsers = walletBalances.filter(user => {
           if (!user['Last Transaction']) return false;
           const lastTransactionDate = new Date(user['Last Transaction']);
@@ -129,6 +130,46 @@ const FinancialDashboard = () => {
         });
         
         const activeUsersCount = activeUsers.length;
+        
+        // Count active users by currency
+        const activeUsersByCurrency = {
+          'KES': 0,
+          'UGX': 0,
+          'NGN': 0, 
+          'USD': 0,
+          'CNY': 0
+        };
+        
+        // For each active user, check which currencies they have balances in
+        activeUsers.forEach(user => {
+          // Check each currency column for non-zero balances
+          if (user.KES && user.KES !== '0.00 KES' && user.KES !== '0.00') {
+            activeUsersByCurrency.KES++;
+          }
+          if (user.UGX && user.UGX !== '0.00 UGX' && user.UGX !== '0.00') {
+            activeUsersByCurrency.UGX++;
+          }
+          if (user.NGN && user.NGN !== '0.00 NGN' && user.NGN !== '0.00') {
+            activeUsersByCurrency.NGN++;
+          }
+          if (user.USD && user.USD !== '0.00 USD' && user.USD !== '0.00') {
+            activeUsersByCurrency.USD++;
+          }
+          if (user.CNY && user.CNY !== '0.00 CNY' && user.CNY !== '0.00') {
+            activeUsersByCurrency.CNY++;
+          }
+        });
+        
+        // Also get previous month active users if possible
+        // For this, we'd need data from 30-60 days ago, but since we only have last transaction date,
+        // we'll use the Monthly_Active_Users sheet for the previous month data
+        const previousActiveUsersByCurrency = {};
+        const janActiveUsers = monthlyActiveUsers.find(m => m.YearMonth === '2025-01');
+        if (janActiveUsers) {
+          currencies.forEach(currency => {
+            previousActiveUsersByCurrency[currency] = parseInt(janActiveUsers[currency] || 0);
+          });
+        }
 
         // Use fixed exchange rates
         const exchangeRates = {
@@ -257,6 +298,9 @@ const FinancialDashboard = () => {
           });
         }
 
+        // Define the currencies we're tracking
+        const currencies = ['KES', 'UGX', 'NGN', 'USD', 'CNY'];
+        
         // Calculate MTD Growth directly from monthly data
         // Find Jan and Feb data for direct comparison
         const febRevenueData = monthlyRevenue.find(m => m.YearMonth === '2025-02');
@@ -265,9 +309,6 @@ const FinancialDashboard = () => {
         const janTransactionData = monthlyTransactionCount.find(m => m.YearMonth === '2025-01');
         const febVolumeData = monthlyVolume.find(m => m.YearMonth === '2025-02');
         const janVolumeData = monthlyVolume.find(m => m.YearMonth === '2025-01');
-
-        // Define the currencies we're tracking
-        const currencies = ['KES', 'UGX', 'NGN', 'USD', 'CNY'];
         
         // Calculate growth metrics for each currency
         const mtdGrowthData = currencies.map(currency => {
@@ -288,6 +329,26 @@ const FinancialDashboard = () => {
             parseFloat(febVolumeData[currency]) : 0;
           const previousVolume = janVolumeData && janVolumeData[currency] ? 
             parseFloat(janVolumeData[currency]) : 0;
+          
+          // Convert volumes to KES using exchange rates
+          let currentVolumeKES = currentVolume;
+          let previousVolumeKES = previousVolume;
+          
+          if (currency !== 'KES') {
+            if (currency === 'UGX') {
+              currentVolumeKES = currentVolume * exchangeRates.UGX;
+              previousVolumeKES = previousVolume * exchangeRates.UGX;
+            } else if (currency === 'NGN') {
+              currentVolumeKES = currentVolume * exchangeRates.NGN;
+              previousVolumeKES = previousVolume * exchangeRates.NGN;
+            } else if (currency === 'USD') {
+              currentVolumeKES = currentVolume * exchangeRates.USD;
+              previousVolumeKES = previousVolume * exchangeRates.USD;
+            } else if (currency === 'CNY') {
+              currentVolumeKES = currentVolume * exchangeRates.CNY;
+              previousVolumeKES = previousVolume * exchangeRates.CNY;
+            }
+          }
           
           // Calculate growth rates
           let revenueGrowth = 0;
@@ -311,17 +372,34 @@ const FinancialDashboard = () => {
             transactionVolumeGrowth = 100;
           }
           
+          // Get active users by currency data
+          const currentActiveUsers = activeUsersByCurrency[currency] || 0;
+          const previousActiveUsers = previousActiveUsersByCurrency[currency] || 0;
+          
+          // Calculate user growth rate
+          let userGrowth = 0;
+          if (previousActiveUsers > 0) {
+            userGrowth = ((currentActiveUsers - previousActiveUsers) / previousActiveUsers) * 100;
+          } else if (currentActiveUsers > 0) {
+            userGrowth = 100;
+          }
+          
           return {
             currency,
             revenueGrowth,
             transactionCountGrowth,
             transactionVolumeGrowth,
+            userGrowth,
             currentRevenue,
             previousRevenue,
             currentTransactionCount: currentTransCount,
             previousTransactionCount: previousTransCount,
             currentTransactionVolume: currentVolume,
             previousTransactionVolume: previousVolume,
+            currentActiveUsers,
+            previousActiveUsers,
+            volumeKES: currentVolumeKES,
+            previousVolumeKES,
             exchangeRate: currency === 'KES' ? 1 : (exchangeRates[currency] || 1)
           };
         });
@@ -444,7 +522,7 @@ const FinancialDashboard = () => {
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-gray-500 text-sm font-medium mb-1">MTD User Growth</h3>
                 <div className="text-3xl font-bold text-gray-900">
-                  {data.mtdGrowth[1] ? formatMultiplier(data.mtdGrowth[1].transactionCountGrowth) : 'N/A'}
+                  {data.mtdGrowth[1] ? formatMultiplier(data.mtdGrowth[1].userGrowth) : 'N/A'}
                 </div>
                 <div className="mt-4">
                   <div className="text-sm text-gray-500">Current Active Users</div>
@@ -581,8 +659,8 @@ const FinancialDashboard = () => {
               
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-gray-500 text-sm font-medium mb-1">MTD User Growth</h3>
-                <div className="text-3xl font-bold text-gray-900" style={{ color: getGrowthColor(data.mtdGrowth[1]?.transactionCountGrowth) }}>
-                  {data.mtdGrowth[1] ? formatMultiplier(data.mtdGrowth[1].transactionCountGrowth) : 'N/A'}
+                <div className="text-3xl font-bold text-gray-900" style={{ color: getGrowthColor(data.mtdGrowth[1]?.userGrowth) }}>
+                  {data.mtdGrowth[1] ? formatMultiplier(data.mtdGrowth[1].userGrowth) : 'N/A'}
                 </div>
               </div>
             </div>
@@ -639,7 +717,7 @@ const FinancialDashboard = () => {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Currency</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Users</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Active Users</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Previous Month</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Growth</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -649,16 +727,16 @@ const FinancialDashboard = () => {
                     {data.mtdGrowth.map((item, index) => (
                       <tr key={index}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{item.currency}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatNumber(item.currentTransactionCount)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatNumber(item.previousTransactionCount)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatMultiplier(item.transactionCountGrowth)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatNumber(item.currentActiveUsers)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatNumber(item.previousActiveUsers)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{formatMultiplier(item.userGrowth)}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                            ${item.transactionCountGrowth > 10 ? 'bg-green-100 text-green-800' : 
-                              item.transactionCountGrowth < 0 ? 'bg-red-100 text-red-800' : 
+                            ${item.userGrowth > 10 ? 'bg-green-100 text-green-800' : 
+                              item.userGrowth < 0 ? 'bg-red-100 text-red-800' : 
                               'bg-yellow-100 text-yellow-800'}`}>
-                            {item.transactionCountGrowth > 10 ? 'Strong Growth' : 
-                             item.transactionCountGrowth < 0 ? 'Declining' : 'Stable'}
+                            {item.userGrowth > 10 ? 'Strong Growth' : 
+                             item.userGrowth < 0 ? 'Declining' : 'Stable'}
                           </span>
                         </td>
                       </tr>
@@ -894,6 +972,7 @@ const FinancialDashboard = () => {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Currency</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Volume</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Previous Month</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">KES Equivalent</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Growth</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     </tr>
@@ -903,10 +982,13 @@ const FinancialDashboard = () => {
                       <tr key={index}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{item.currency}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
-                          {formatNumber(item.currentTransactionVolume)}
+                          {formatNumber(item.currentTransactionVolume)} {item.currency}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
-                          {formatNumber(item.previousTransactionVolume)}
+                          {formatNumber(item.previousTransactionVolume)} {item.currency}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
+                          KES {formatNumber(item.volumeKES)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
                           {formatMultiplier(item.transactionVolumeGrowth)}
