@@ -106,7 +106,7 @@ const FinancialDashboard = () => {
     return cny + kes + ngn + ugx + usd;
   };
 
-  // Compute active users by currency for a given date range
+  // Compute active users by currency for a calendar month range
   const getActiveUsersByCurrencyInRange = (walletBalances, startDate, endDate) => {
     const activeByCurrency = { KES: 0, UGX: 0, NGN: 0, USD: 0, CNY: 0 };
     walletBalances.forEach(user => {
@@ -172,17 +172,17 @@ const FinancialDashboard = () => {
         const monthlyVolume = extractSheetData('Monthly_Transaction_Volume');
         const userStats = extractSheetData('User_Statistics'); // If you still want total user count
 
-        // 1) Compute current active users (last 30 days) and previous active users (30-60 days ago)
-        const endDateCurrent = new Date(); // "now"
-        const startDateCurrent = new Date();
-        startDateCurrent.setDate(startDateCurrent.getDate() - 30);
+        // 1) Compute active users based on calendar months (February vs January)
+        // For February 2025
+        const febStart = new Date(2025, 1, 1); // 2025-02-01
+        const febEnd = new Date(2025, 1, 28, 23, 59, 59);
+        
+        // For January 2025
+        const janStart = new Date(2025, 0, 1);
+        const janEnd = new Date(2025, 0, 31, 23, 59, 59);
 
-        const endDatePrevious = new Date(startDateCurrent); // previous window ends right before current window starts
-        const startDatePrevious = new Date();
-        startDatePrevious.setDate(startDatePrevious.getDate() - 60);
-
-        const currentActiveByCurrency = getActiveUsersByCurrencyInRange(walletBalances, startDateCurrent, endDateCurrent);
-        const previousActiveByCurrency = getActiveUsersByCurrencyInRange(walletBalances, startDatePrevious, endDatePrevious);
+        const currentActiveByCurrency = getActiveUsersByCurrencyInRange(walletBalances, febStart, febEnd);
+        const previousActiveByCurrency = getActiveUsersByCurrencyInRange(walletBalances, janStart, janEnd);
 
         // Summed total active users across all currencies in current period
         // (If a user is active in multiple currencies, they might be counted multiple times. If you want distinct user count, you need a different approach.)
@@ -195,11 +195,16 @@ const FinancialDashboard = () => {
           sumPreviousActive += previousActiveByCurrency[cur];
         });
 
-        // Distinct active user count can also be taken from the filter approach (without currency breakdown).
-        // If you want distinct *overall* active users, just do:
+        // Calculate distinct active users for February (current month)
         const distinctActiveUsers = walletBalances.filter(user => {
           const lastTxDate = new Date(user['Last Transaction'] || '');
-          return lastTxDate >= startDateCurrent && lastTxDate <= endDateCurrent;
+          return lastTxDate >= febStart && lastTxDate <= febEnd;
+        }).length;
+        
+        // Calculate distinct active users for January (previous month)
+        const distinctActiveUsersPrev = walletBalances.filter(user => {
+          const lastTxDate = new Date(user['Last Transaction'] || '');
+          return lastTxDate >= janStart && lastTxDate <= janEnd;
         }).length;
 
         // 2) Key metrics: total revenue, total transactions, total users
@@ -213,9 +218,9 @@ const FinancialDashboard = () => {
           totalUsers = walletBalances.length;
         }
 
-        // total transactions => Sum transaction counts manually instead of using the 'Total' column
+        // total transactions => Use the 'Total' column from the CSV directly
         const febCountRow = monthlyTransactionCount.find(m => m.YearMonth === '2025-02');
-        const totalTransactions = febCountRow ? sumTxCount(febCountRow) : 0;
+        const totalTransactions = febCountRow ? parseFloat(febCountRow.Total || 0) : 0;
 
         // total revenue => from the most recent month in Monthly_Revenue (2025-02), converting all to KES
         const febRevenueRow = monthlyRevenue.find(m => m.YearMonth === '2025-02');
@@ -237,8 +242,8 @@ const FinancialDashboard = () => {
             const revRow = monthlyRevenue.find(r => r.YearMonth === ym) || {};
             const volRow = monthlyVolume.find(v => v.YearMonth === ym) || {};
 
-            // Sum transaction counts manually
-            const txCount = sumTxCount(item);
+            // Use the Total column directly from the CSV
+            const txCount = parseFloat(item.Total || 0);
 
             // Sum revenue (KES + conversions)
             let revKES = 0;
@@ -362,8 +367,8 @@ const FinancialDashboard = () => {
         });
 
         // Calculate overall growth metrics for overview section
-        // User growth
-        const overallUserGrowth = calcGrowth(sumCurrentActive, sumPreviousActive);
+        // User growth based on distinct monthly active users
+        const overallUserGrowth = calcGrowth(distinctActiveUsers, distinctActiveUsersPrev);
         
         // Volume growth - sum Feb volumes in KES, sum Jan volumes in KES, then calculate growth
         const febVolumesKES = currencies.reduce((sum, currency) => {
