@@ -2,14 +2,17 @@
   "name": "alpha",
   "version": "1.0.0",
   "description": "Alpha Tribe Performance Dashboard",
-  "main": "src/index.js",
+  "main": "server.js",
   "scripts": {
-    "start": "react-scripts start",
+    "start": "node server.js",
     "build": "react-scripts build",
+    "dev": "react-scripts start",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
   "dependencies": {
+    "express": "^4.18.2",
+    "express-basic-auth": "^1.2.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
