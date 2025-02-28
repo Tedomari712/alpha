@@ -670,7 +670,7 @@ const FinancialDashboard = () => {
                 <h3 className="text-gray-500 text-sm font-medium mb-1">February Active Users</h3>
                 <div className="text-3xl font-bold text-gray-900">{formatNumber(data.keyMetrics.activeUsers)}</div>
                 <div className="text-sm text-gray-500 mt-1">
-                  ({formatMultiplier((data.keyMetrics.activeUsers / data.keyMetrics.totalUsers) * 100)} of total)
+                  ({((data.keyMetrics.activeUsers / data.keyMetrics.totalUsers) * 100).toFixed(1)}% of total)
                 </div>
               </div>
               
