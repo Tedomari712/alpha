@@ -169,6 +169,9 @@ const FinancialDashboard = () => {
         const monthlyActiveUsers = extractSheetData('Monthly_Active_Users');
         const userStats = extractSheetData('User_Statistics');
 
+        // Define the currencies we're working with
+        const currencies = ['KES', 'UGX', 'NGN', 'USD', 'CNY'];
+        
         // Get user data from Monthly_Active_Users sheet
         const janActiveRow = monthlyActiveUsers.find(m => m.YearMonth === '2025-01') || {};
         const febActiveRow = monthlyActiveUsers.find(m => m.YearMonth === '2025-02') || {};
@@ -210,7 +213,6 @@ const FinancialDashboard = () => {
         const previousActiveByCurrency = parseCurrencyBreakdown(janActiveRow.Currency_Breakdown);
         
         // Default values in case parsing fails
-        const currencies = ['KES', 'UGX', 'NGN', 'USD', 'CNY'];
         currencies.forEach(currency => {
           if (!currentActiveByCurrency[currency]) currentActiveByCurrency[currency] = 0;
           if (!previousActiveByCurrency[currency]) previousActiveByCurrency[currency] = 0;
