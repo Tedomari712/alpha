@@ -551,9 +551,6 @@ const FinancialDashboard = () => {
                   <div className="text-xl font-semibold text-gray-800">{formatNumber(data.keyMetrics.activeUsers)}</div>
                   <div className="text-sm text-gray-500">January Active Users</div>
                   <div className="text-xl font-semibold text-gray-800">{formatNumber(data.keyMetrics.activePrevUsers)}</div>
-                  <div className="text-xs text-gray-500 mt-1 italic">
-                    From Monthly_Active_Users sheet
-                  </div>
                 </div>
               </div>
               
@@ -585,7 +582,6 @@ const FinancialDashboard = () => {
             {/* Combined Growth Trends Chart */}
             <div className="bg-white rounded-lg shadow p-6 mb-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-2">Monthly Growth Trends</h3>
-              <p className="text-xs text-gray-500 mb-2 italic">Using logarithmic scale for better visualization of growth patterns</p>
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
@@ -676,9 +672,6 @@ const FinancialDashboard = () => {
                 <div className="text-sm text-gray-500 mt-1">
                   ({formatMultiplier((data.keyMetrics.activeUsers / data.keyMetrics.totalUsers) * 100)} of total)
                 </div>
-                <div className="text-xs text-gray-500 mt-1 italic">
-                  Users with transactions in February 2025 (from Monthly_Active_Users sheet)
-                </div>
               </div>
               
               <div className="bg-white rounded-lg shadow p-6">
@@ -686,16 +679,12 @@ const FinancialDashboard = () => {
                 <div className="text-3xl font-bold text-gray-900" style={{ color: getGrowthColor(data.keyMetrics.overallUserGrowth) }}>
                   {formatMultiplier(data.keyMetrics.overallUserGrowth)}
                 </div>
-                <div className="text-xs text-gray-500 mt-1 italic">
-                  Comparing February vs January active users
-                </div>
               </div>
             </div>
 
             {/* Monthly User Growth Trend */}
             <div className="bg-white rounded-lg shadow p-6 mb-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-2">Monthly User Growth</h3>
-              <p className="text-xs text-gray-500 mb-2 italic">Using logarithmic scale for better visualization of growth patterns</p>
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
@@ -825,7 +814,6 @@ const FinancialDashboard = () => {
             {/* Monthly Revenue Trend */}
             <div className="bg-white rounded-lg shadow p-6 mb-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-2">Monthly Revenue Trend</h3>
-              <p className="text-xs text-gray-500 mb-2 italic">Using logarithmic scale for better visualization of growth patterns</p>
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
@@ -948,7 +936,6 @@ const FinancialDashboard = () => {
             {/* Monthly Volume Trend */}
             <div className="bg-white rounded-lg shadow p-6 mb-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-2">Monthly Transaction Volume Trend (KES)</h3>
-              <p className="text-xs text-gray-500 mb-2 italic">Using logarithmic scale for better visualization of growth patterns</p>
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
