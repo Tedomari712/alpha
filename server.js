@@ -6,7 +6,7 @@ const app = express();
 
 // Add basic authentication
 app.use(basicAuth({
-    users: { 'admin': 'your-secure-password' }, // Change these credentials
+    users: { 'wapipay': 'Cani$can3med!t' }, // Change these credentials
     challenge: true,
     realm: 'Alpha Tribe Dashboard',
 }));
