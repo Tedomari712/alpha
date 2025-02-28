@@ -6,6 +6,7 @@ import {
 import * as XLSX from 'xlsx';
 
 const FinancialDashboard = () => {
+  // Combine all state declarations
   const [data, setData] = useState({
     keyMetrics: {
       totalRevenue: 0,
@@ -28,9 +29,6 @@ const FinancialDashboard = () => {
     },
     exchangeRates: {}
   });
-
-const FinancialDashboard = () => {
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
@@ -219,6 +217,14 @@ const FinancialDashboard = () => {
           if (!previousActiveByCurrency[currency]) previousActiveByCurrency[currency] = 0;
         });
 
+        // Find January and February rows from transaction count, volume, and revenue sheets
+        const janTxRow = monthlyTransactionCount.find(m => m.YearMonth === '2025-01') || {};
+        const febTxRow = monthlyTransactionCount.find(m => m.YearMonth === '2025-02') || {};
+        const janVolRow = monthlyVolume.find(m => m.YearMonth === '2025-01') || {};
+        const febVolRow = monthlyVolume.find(m => m.YearMonth === '2025-02') || {};
+        const janRevRow = monthlyRevenue.find(m => m.YearMonth === '2025-01') || {};
+        const febRevRow = monthlyRevenue.find(m => m.YearMonth === '2025-02') || {};
+
         // Total transactions - directly use the Total column from Monthly_Transaction_Count
         const febCountRow = monthlyTransactionCount.find(m => m.YearMonth === '2025-02');
         const totalTransactions = febCountRow ? parseFloat(febCountRow.Total) : 0; // Should be 1220
@@ -229,13 +235,10 @@ const FinancialDashboard = () => {
           return row.Total ? parseFloat(row.Total) : 0;
         };
 
-        // Find January and February rows from transaction count, volume, and revenue sheets
-        const janTxRow = monthlyTransactionCount.find(m => m.YearMonth === '2025-01') || {};
-        const febTxRow = monthlyTransactionCount.find(m => m.YearMonth === '2025-02') || {};
-        const janVolRow = monthlyVolume.find(m => m.YearMonth === '2025-01') || {};
-        const febVolRow = monthlyVolume.find(m => m.YearMonth === '2025-02') || {};
-        const janRevRow = monthlyRevenue.find(m => m.YearMonth === '2025-01') || {};
-        const febRevRow = monthlyRevenue.find(m => m.YearMonth === '2025-02') || {};
+        // Calculate MTD transaction count growth (Feb vs Jan)
+        const febTxCount = parseFloat(febTxRow ? febTxRow.Total : 0); // 1220
+        const janTxCount = parseFloat(janTxRow ? janTxRow.Total : 0); // 219
+        const txCountGrowth = calcGrowth(febTxCount, janTxCount); // Should be around 456.62%
 
         // 2) Key metrics: total revenue, total transactions, total users
         //    For "total users," you can either use userStats or walletBalances.length
@@ -343,7 +346,7 @@ const FinancialDashboard = () => {
         //    Also incorporate user growth from walletBalances for each currency
         const mtdGrowthData = currencies.map(currency => {
           // transaction count - directly use values from the sheet
-          const currentTx = parseFloat(febCountRow[currency] || 0);
+          const currentTx = parseFloat(febTxRow[currency] || 0);
           const prevTx = parseFloat(janTxRow[currency] || 0);
           const txGrowth = calcGrowth(currentTx, prevTx);
 
@@ -364,7 +367,7 @@ const FinancialDashboard = () => {
           const volGrowth = calcGrowth(currentVolKES, prevVolKES);
 
           // revenue
-          const currentRev = parseFloat(febRevenueRow[currency] || 0);
+          const currentRev = parseFloat(febRevRow[currency] || 0);
           const prevRev = parseFloat(janRevRow[currency] || 0);
           const revGrowth = calcGrowth(currentRev, prevRev);
 
