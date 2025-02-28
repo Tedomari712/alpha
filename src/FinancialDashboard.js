@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+// Calculate overall growth metrics
+        // User growth based on distinct monthly active users
+        const overallUserGrowth = calcGrowth(distinctActiveUsers, distinctActiveUsersPrev);import React, { useState, useEffect } from 'react';
 import {
   LineChart, BarChart, ComposedChart, Bar, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
@@ -159,38 +161,60 @@ const FinancialDashboard = () => {
           return XLSX.utils.sheet_to_json(sheet, { raw: false });
         };
 
-        // Load ONLY the monthly sheets + wallet balances + optional userStats for total users
+        // Load required sheets from Excel file
         const walletBalances = extractSheetData('Wallet_Balances');
         const monthlyTransactionCount = extractSheetData('Monthly_Transaction_Count');
         const monthlyRevenue = extractSheetData('Monthly_Revenue');
         const monthlyVolume = extractSheetData('Monthly_Transaction_Volume');
-        const monthlyActiveUsers = extractSheetData('Monthly_Active_Users'); // New sheet for user growth
-        const userStats = extractSheetData('User_Statistics'); // If you still want total user count
+        const monthlyActiveUsers = extractSheetData('Monthly_Active_Users');
+        const userStats = extractSheetData('User_Statistics');
 
-        // Get user growth data from Monthly_Active_Users sheet
+        // Get user data from Monthly_Active_Users sheet
         const janActiveRow = monthlyActiveUsers.find(m => m.YearMonth === '2025-01') || {};
         const febActiveRow = monthlyActiveUsers.find(m => m.YearMonth === '2025-02') || {};
         
-        // Process active users by currency
-        const currentActiveByCurrency = {
-          KES: parseInt(febActiveRow.KES?.replace(/,/g, '') || 0, 10),
-          UGX: parseInt(febActiveRow.UGX?.replace(/,/g, '') || 0, 10),
-          NGN: parseInt(febActiveRow.NGN?.replace(/,/g, '') || 0, 10),
-          USD: parseInt(febActiveRow.USD?.replace(/,/g, '') || 0, 10),
-          CNY: parseInt(febActiveRow.CNY?.replace(/,/g, '') || 0, 10)
+        // Get total active users directly from Active_Users column
+        const distinctActiveUsers = parseInt(febActiveRow.Active_Users || 0, 10); // Should be 56
+        const distinctActiveUsersPrev = parseInt(janActiveRow.Active_Users || 0, 10); // Should be 35
+        
+        // Parse the Currency_Breakdown column to get currency-specific user counts
+        // The column contains strings like "{'CNY': 11, 'KES': 53, 'NGN': 25, 'UGX': 3, 'USD': 7}"
+        const parseCurrencyBreakdown = (breakdownStr) => {
+          if (!breakdownStr || typeof breakdownStr !== 'string') return {};
+          
+          try {
+            // Replace single quotes with double quotes for JSON parsing
+            const jsonStr = breakdownStr.replace(/'/g, '"');
+            return JSON.parse(jsonStr);
+          } catch (e) {
+            console.error('Error parsing currency breakdown:', e);
+            
+            // Fallback parsing using regex if JSON.parse fails
+            const result = {};
+            const matches = breakdownStr.match(/'(\w+)':\s*(\d+)/g);
+            
+            if (matches) {
+              matches.forEach(match => {
+                const [_, currency, count] = match.match(/'(\w+)':\s*(\d+)/) || [];
+                if (currency && count) {
+                  result[currency] = parseInt(count, 10);
+                }
+              });
+            }
+            
+            return result;
+          }
         };
         
-        const previousActiveByCurrency = {
-          KES: parseInt(janActiveRow.KES?.replace(/,/g, '') || 0, 10),
-          UGX: parseInt(janActiveRow.UGX?.replace(/,/g, '') || 0, 10),
-          NGN: parseInt(janActiveRow.NGN?.replace(/,/g, '') || 0, 10),
-          USD: parseInt(janActiveRow.USD?.replace(/,/g, '') || 0, 10),
-          CNY: parseInt(janActiveRow.CNY?.replace(/,/g, '') || 0, 10)
-        };
+        const currentActiveByCurrency = parseCurrencyBreakdown(febActiveRow.Currency_Breakdown);
+        const previousActiveByCurrency = parseCurrencyBreakdown(janActiveRow.Currency_Breakdown);
         
-        // Distinct active users for February and January from the Monthly_Active_Users sheet
-        const distinctActiveUsers = parseInt(febActiveRow.Total?.replace(/,/g, '') || 0, 10);
-        const distinctActiveUsersPrev = parseInt(janActiveRow.Total?.replace(/,/g, '') || 0, 10);
+        // Default values in case parsing fails
+        const currencies = ['KES', 'UGX', 'NGN', 'USD', 'CNY'];
+        currencies.forEach(currency => {
+          if (!currentActiveByCurrency[currency]) currentActiveByCurrency[currency] = 0;
+          if (!previousActiveByCurrency[currency]) previousActiveByCurrency[currency] = 0;
+        });
 
         // 2) Key metrics: total revenue, total transactions, total users
         //    For "total users," you can either use userStats or walletBalances.length
@@ -203,27 +227,15 @@ const FinancialDashboard = () => {
           totalUsers = walletBalances.length;
         }
 
-        // Make sure transaction counts are correctly parsed with commas
-        // Get the exact totals from Monthly_Transaction_Count sheet
-        const validateTxCount = (row) => {
-          if (!row) return 0;
-          // If Total column exists, use it directly
-          if (row.Total) {
-            return parseInt(row.Total.toString().replace(/,/g, ''), 10);
-          }
-          // Otherwise sum all currency columns
-          let total = 0;
-          ['KES', 'UGX', 'NGN', 'USD', 'CNY'].forEach(currency => {
-            if (row[currency]) {
-              total += parseInt(row[currency].toString().replace(/,/g, ''), 10);
-            }
-          });
-          return total;
-        };
-
-        // Total transactions - use the exact total from the sheet
+        // Total transactions - directly use the Total column from Monthly_Transaction_Count
         const febCountRow = monthlyTransactionCount.find(m => m.YearMonth === '2025-02');
-        const totalTransactions = validateTxCount(febCountRow);
+        const totalTransactions = febCountRow ? parseFloat(febCountRow.Total) : 0; // Should be 1220
+        
+        // For transaction counts in monthly trends, also use the Total column directly
+        const getTransactionCount = (row) => {
+          if (!row) return 0;
+          return row.Total ? parseFloat(row.Total) : 0;
+        };
 
         // total revenue => from the most recent month in Monthly_Revenue (2025-02), converting all to KES
         const febRevenueRow = monthlyRevenue.find(m => m.YearMonth === '2025-02');
@@ -244,9 +256,10 @@ const FinancialDashboard = () => {
             const ym = item.YearMonth;
             const revRow = monthlyRevenue.find(r => r.YearMonth === ym) || {};
             const volRow = monthlyVolume.find(v => v.YearMonth === ym) || {};
+            const activeUserRow = monthlyActiveUsers.find(a => a.YearMonth === ym) || {};
 
-            // Parse the transaction count properly
-            const txCount = validateTxCount(item);
+            // Use total transaction count directly from the sheet (should be numeric already)
+            const txCount = getTransactionCount(item);
 
             // Sum revenue (KES + conversions)
             let revKES = 0;
@@ -264,28 +277,33 @@ const FinancialDashboard = () => {
             if (volRow.USD) volKES += parseFloat(volRow.USD) * exchangeRates.USD;
             if (volRow.CNY) volKES += parseFloat(volRow.CNY) * exchangeRates.CNY;
 
+            // Get active users directly from Monthly_Active_Users sheet
+            const activeUsers = parseInt(activeUserRow.Active_Users || 0, 10);
+
             return {
               month: ym,
               transactions: txCount,
               revenue: revKES,
-              // We are *not* using monthlyActiveUsers; let's treat "users" as 0 or some placeholder
-              // If you want a chart of total distinct active users monthly, you'd need a different approach
-              users: 0,
+              users: activeUsers, // Now using actual active user count for each month
               volume: volKES // Now using KES-converted volume
             };
           });
 
         // 4) Month-over-month growth rates (for user, revenue, volume).
-        //    Because we no longer have monthly user data, we can just set user growth = 0 for the chart,
-        //    or remove that chart. For demonstration, we'll keep it with 0 or null.
+        //    Now using actual values from Monthly_Active_Users sheet
         const growthRatesRaw = { user: [], revenue: [], volume: [] };
         for (let i = 1; i < monthlyTrendsRaw.length; i++) {
           const prev = monthlyTrendsRaw[i - 1];
           const curr = monthlyTrendsRaw[i];
 
-          const userGrowth = (prev.users > 0)
-            ? ((curr.users - prev.users) / prev.users) * 100
-            : null;
+          // Find if we have the growth rate directly from the Monthly_Active_Users sheet
+          const activeUserRow = monthlyActiveUsers.find(m => m.YearMonth === curr.month) || {};
+          
+          // Use MoM_Growth from sheet when available, otherwise calculate
+          const userGrowth = activeUserRow.MoM_Growth !== undefined && !isNaN(parseFloat(activeUserRow.MoM_Growth)) 
+            ? parseFloat(activeUserRow.MoM_Growth) 
+            : (prev.users > 0 ? ((curr.users - prev.users) / prev.users) * 100 : null);
+            
           const revGrowth = (prev.revenue > 0)
             ? ((curr.revenue - prev.revenue) / prev.revenue) * 100
             : null;
@@ -369,9 +387,10 @@ const FinancialDashboard = () => {
           };
         });
 
-        // Calculate overall growth metrics for overview section
-        // User growth based on distinct monthly active users
-        const overallUserGrowth = calcGrowth(distinctActiveUsers, distinctActiveUsersPrev);
+        // Calculate MTD transaction count growth (Feb vs Jan)
+        const febTxCount = parseFloat(febCountRow ? febCountRow.Total : 0); // 1220
+        const janTxCount = parseFloat(janTxRow ? janTxRow.Total : 0); // 219
+        const txCountGrowth = calcGrowth(febTxCount, janTxCount); // Should be around 456.62%
         
         // Volume growth - sum Feb volumes in KES, sum Jan volumes in KES, then calculate growth
         const febVolumesKES = currencies.reduce((sum, currency) => {
@@ -417,6 +436,7 @@ const FinancialDashboard = () => {
           overallUserGrowth,
           overallVolumeGrowth,
           overallRevenueGrowth,
+          txCountGrowth,
           totalVolumeKES: febVolumesKES
         };
 
