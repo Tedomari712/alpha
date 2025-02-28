@@ -28,7 +28,9 @@ const FinancialDashboard = () => {
     },
     exchangeRates: {}
   });
-  
+
+const FinancialDashboard = () => {
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
@@ -227,11 +229,13 @@ const FinancialDashboard = () => {
           return row.Total ? parseFloat(row.Total) : 0;
         };
 
-        // Calculate MTD transaction count growth (Feb vs Jan)
+        // Find January and February rows from transaction count, volume, and revenue sheets
         const janTxRow = monthlyTransactionCount.find(m => m.YearMonth === '2025-01') || {};
-        const febTxCount = parseFloat(febCountRow ? febCountRow.Total : 0); // 1220
-        const janTxCount = parseFloat(janTxRow ? janTxRow.Total : 0); // 219
-        const txCountGrowth = calcGrowth(febTxCount, janTxCount); // Should be around 456.62%
+        const febTxRow = monthlyTransactionCount.find(m => m.YearMonth === '2025-02') || {};
+        const janVolRow = monthlyVolume.find(m => m.YearMonth === '2025-01') || {};
+        const febVolRow = monthlyVolume.find(m => m.YearMonth === '2025-02') || {};
+        const janRevRow = monthlyRevenue.find(m => m.YearMonth === '2025-01') || {};
+        const febRevRow = monthlyRevenue.find(m => m.YearMonth === '2025-02') || {};
 
         // 2) Key metrics: total revenue, total transactions, total users
         //    For "total users," you can either use userStats or walletBalances.length
@@ -349,19 +353,19 @@ const FinancialDashboard = () => {
           const userGrowth = calcGrowth(currActive, prevActive);
 
           // volume in raw currency
-          const currentVol = parseFloat(febRevenueRow[currency] || 0);
-          const prevVol = parseFloat(janActiveRow[currency] || 0);
+          const currentVol = parseFloat(febVolRow[currency] || 0);
+          const prevVol = parseFloat(janVolRow[currency] || 0);
 
           // convert to KES
           const currentVolKES = convertToKES(currentVol, currency, exchangeRates);
           const prevVolKES = convertToKES(prevVol, currency, exchangeRates);
           
-          // Calculate growth based on KES values (FIXED)
+          // Calculate growth based on KES values
           const volGrowth = calcGrowth(currentVolKES, prevVolKES);
 
           // revenue
           const currentRev = parseFloat(febRevenueRow[currency] || 0);
-          const prevRev = parseFloat(janActiveRow[currency] || 0);
+          const prevRev = parseFloat(janRevRow[currency] || 0);
           const revGrowth = calcGrowth(currentRev, prevRev);
 
           return {
@@ -391,12 +395,12 @@ const FinancialDashboard = () => {
         
         // Volume growth - sum Feb volumes in KES, sum Jan volumes in KES, then calculate growth
         const febVolumesKES = currencies.reduce((sum, currency) => {
-          const vol = parseFloat(febRevenueRow[currency] || 0);
+          const vol = parseFloat(febVolRow[currency] || 0);
           return sum + convertToKES(vol, currency, exchangeRates);
         }, 0);
         
         const janVolumesKES = currencies.reduce((sum, currency) => {
-          const vol = parseFloat(janActiveRow[currency] || 0);
+          const vol = parseFloat(janVolRow[currency] || 0);
           return sum + convertToKES(vol, currency, exchangeRates);
         }, 0);
         
@@ -404,12 +408,12 @@ const FinancialDashboard = () => {
         
         // Revenue growth - calculate similar to volume
         const febRevenueKES = currencies.reduce((sum, currency) => {
-          const rev = parseFloat(febRevenueRow[currency] || 0);
+          const rev = parseFloat(febRevRow[currency] || 0);
           return sum + convertToKES(rev, currency, exchangeRates);
         }, 0);
         
         const janRevenueKES = currencies.reduce((sum, currency) => {
-          const rev = parseFloat(janActiveRow[currency] || 0);
+          const rev = parseFloat(janRevRow[currency] || 0);
           return sum + convertToKES(rev, currency, exchangeRates);
         }, 0);
         
