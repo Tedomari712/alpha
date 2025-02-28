@@ -231,7 +231,7 @@ const FinancialDashboard = () => {
 
         // Total transactions - directly use the Total column from Monthly_Transaction_Count
         const febCountRow = monthlyTransactionCount.find(m => m.YearMonth === '2025-02');
-        const totalTransactions = febCountRow ? parseFloat(febCountRow.Total) : 0; // Should be 1220
+        const totalTransactions = febCountRow ? parseFloat(febCountRow.Total || 0) : 0;
         
         // For transaction counts in monthly trends, also use the Total column directly
         const getTransactionCount = (row) => {
@@ -261,7 +261,7 @@ const FinancialDashboard = () => {
             const activeUserRow = monthlyActiveUsers.find(a => a.YearMonth === ym) || {};
 
             // Use total transaction count directly from the sheet (should be numeric already)
-            const txCount = getTransactionCount(item);
+            const txCount = parseFloat(item.Total || 0);
 
             // Sum revenue (KES + conversions)
             let revKES = 0;
